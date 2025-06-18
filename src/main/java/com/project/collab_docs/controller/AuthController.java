@@ -2,14 +2,12 @@ package com.project.collab_docs.controller;
 
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.repository.UserRepository;
-import com.project.collab_docs.request.LoginRequest;
-import com.project.collab_docs.request.RegisterRequest;
-import com.project.collab_docs.request.ResendOtpRequest;
-import com.project.collab_docs.request.VerifyOtpRequest;
+import com.project.collab_docs.request.*;
 import com.project.collab_docs.response.AuthResponse;
 import com.project.collab_docs.response.MessageResponse;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.security.JwtUtil;
+import com.project.collab_docs.service.PasswordResetService;
 import com.project.collab_docs.service.UserRegistrationService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
@@ -42,6 +40,7 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final UserRegistrationService userRegistrationService;
+    private final PasswordResetService passwordResetService;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
@@ -156,6 +155,53 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest forgotPasswordRequest) {
+        try {
+            passwordResetService.initiateForgotPassword(forgotPasswordRequest.getEmail());
+
+            return ResponseEntity.ok(new MessageResponse(
+                    "Password reset instructions have been sent to your email address."));
+
+        } catch (RuntimeException e) {
+            log.warn("Forgot password initiation failed for email {}: {}",
+                    forgotPasswordRequest.getEmail(), e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Forgot password initiation error for email {}: {}",
+                    forgotPasswordRequest.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to process password reset request!"));
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest resetPasswordRequest) {
+        try {
+            passwordResetService.resetPassword(
+                    resetPasswordRequest.getEmail(),
+                    resetPasswordRequest.getOtp(),
+                    resetPasswordRequest.getNewPassword()
+            );
+
+            log.info("Password reset completed successfully for email: {}", resetPasswordRequest.getEmail());
+
+            return ResponseEntity.ok(new MessageResponse(
+                    "Password has been reset successfully! You can now login with your new password."));
+
+        } catch (RuntimeException e) {
+            log.warn("Password reset failed for email {}: {}",
+                    resetPasswordRequest.getEmail(), e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Password reset error for email {}: {}",
+                    resetPasswordRequest.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to reset password!"));
+        }
+    }
 
     @PostMapping("/logout")
     public ResponseEntity<?> logoutUser(HttpServletResponse response) {

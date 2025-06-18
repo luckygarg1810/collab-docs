@@ -57,9 +57,17 @@ public class OtpService {
         emailOtpRepository.save(emailOtp);
 
         // Send OTP via email
-        emailService.sendOtpEmail(email, otp, firstName);
+        sendOtpByPurpose(email, otp, firstName, purpose);
 
         log.info("OTP generated and sent for email: {} with purpose: {}", email, purpose);
+    }
+
+    private void sendOtpByPurpose(String email, String otp, String firstName, OtpPurpose purpose) {
+        switch (purpose) {
+            case REGISTRATION -> emailService.sendOtpEmail(email, otp, firstName);
+            case PASSWORD_RESET -> emailService.sendPasswordResetOtpEmail(email, otp, firstName);
+            default -> throw new IllegalArgumentException("Unsupported OTP purpose: " + purpose);
+        }
     }
 
     @Transactional

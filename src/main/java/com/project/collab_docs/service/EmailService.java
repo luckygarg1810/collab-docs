@@ -84,4 +84,77 @@ public class EmailService {
             // Don't throw exception for welcome email failure
         }
     }
+
+    public void sendPasswordResetOtpEmail(String toEmail, String otp, String firstName) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject("Password Reset Request - " + appName);
+
+            String emailBody = String.format("""
+                Dear %s,
+                
+                We received a request to reset your password for your %s account.
+                
+                Please use the following verification code to reset your password:
+                
+                %s
+                
+                This code will expire in 10 minutes for security reasons.
+                
+                If you didn't request a password reset, please ignore this email or contact our support team if you have concerns.
+                
+                For security reasons, please do not share this code with anyone.
+                
+                Best regards,
+                %s Team
+                """, firstName, appName, otp, appName);
+
+            message.setText(emailBody);
+
+            mailSender.send(message);
+            log.info("Password reset OTP email sent successfully to: {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Failed to send password reset OTP email to {}: {}", toEmail, e.getMessage());
+            throw new RuntimeException("Failed to send password reset email", e);
+        }
+    }
+
+    public void sendPasswordResetConfirmationEmail(String toEmail, String firstName) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject("Password Reset Successful - " + appName);
+
+            String emailBody = String.format("""
+                Dear %s,
+                
+                Your password for %s has been successfully reset.
+                
+                If you didn't make this change, please contact our support team immediately as your account may be compromised.
+                
+                For your security, we recommend:
+                - Using a strong, unique password
+                - Enabling two-factor authentication if available
+                - Regularly updating your password
+                
+                If you have any questions or concerns, please don't hesitate to contact our support team.
+                
+                Best regards,
+                %s Team
+                """, firstName, appName, appName);
+
+            message.setText(emailBody);
+
+            mailSender.send(message);
+            log.info("Password reset confirmation email sent successfully to: {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Failed to send password reset confirmation email to {}: {}", toEmail, e.getMessage());
+            // Don't throw exception for confirmation email failure
+        }
+    }
 }
