@@ -1,6 +1,7 @@
 package com.project.collab_docs.exception;
 
 import com.project.collab_docs.response.ErrorResponse;
+import com.project.collab_docs.response.MessageResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

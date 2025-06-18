@@ -4,10 +4,13 @@ import com.project.collab_docs.entities.User;
 import com.project.collab_docs.repository.UserRepository;
 import com.project.collab_docs.request.LoginRequest;
 import com.project.collab_docs.request.RegisterRequest;
+import com.project.collab_docs.request.ResendOtpRequest;
+import com.project.collab_docs.request.VerifyOtpRequest;
 import com.project.collab_docs.response.AuthResponse;
 import com.project.collab_docs.response.MessageResponse;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.security.JwtUtil;
+import com.project.collab_docs.service.UserRegistrationService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -38,36 +41,73 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UserRegistrationService userRegistrationService;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
 
         try {
-            // Check if email already exists
-            if (userRepository.existsByEmail(registerRequest.getEmail())) {
-                log.warn("Registration failed: Email already exists - {}", registerRequest.getEmail());
-                return ResponseEntity.badRequest()
-                        .body(new MessageResponse("Error: Email is already in use!"));
-            }
-
-            User user = User.builder()
-                    .firstName(registerRequest.getFirstName())
-                    .lastName(registerRequest.getLastName())
-                    .email(registerRequest.getEmail())
-                    .password(passwordEncoder.encode(registerRequest.getPassword()))
-                    .build();
-
-            User savedUser = userRepository.save(user);
-            log.info("User registered successfully: {}", savedUser.getEmail());
-
-            return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+            userRegistrationService.initiateRegistration(registerRequest);
+            return ResponseEntity.ok(new MessageResponse(
+                    "Registration initiated successfully! Please check your email for the verification code."));
+        }catch (RuntimeException e) {
+            log.warn("Registration initiation failed for email {}: {}",
+                    registerRequest.getEmail(), e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
         } catch (Exception e) {
-            log.error("Registration error for email {}: {}", registerRequest.getEmail(), e.getMessage());
+            log.error("Registration initiation error for email {}: {}",
+                    registerRequest.getEmail(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to register user!"));
+                    .body(new MessageResponse("Error: Failed to initiate registration!"));
         }
     }
 
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtpAndCompleteRegistration(
+            @Valid @RequestBody VerifyOtpRequest verifyOtpRequest) {
+        try {
+            User user = userRegistrationService.completeRegistration(
+                    verifyOtpRequest.getEmail(), verifyOtpRequest.getOtp());
+
+            log.info("User registration completed successfully: {}", user.getEmail());
+
+            return ResponseEntity.ok(new MessageResponse(
+                    "Email verified successfully! Your account has been created. You can now login."));
+
+        } catch (RuntimeException e) {
+            log.warn("OTP verification failed for email {}: {}",
+                    verifyOtpRequest.getEmail(), e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("OTP verification error for email {}: {}",
+                    verifyOtpRequest.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to verify OTP!"));
+        }
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<?> resendOtp(@Valid @RequestBody ResendOtpRequest resendOtpRequest) {
+        try {
+            userRegistrationService.resendOtp(resendOtpRequest.getEmail());
+
+            return ResponseEntity.ok(new MessageResponse(
+                    "Verification code has been resent to your email."));
+
+        } catch (RuntimeException e) {
+            log.warn("OTP resend failed for email {}: {}",
+                    resendOtpRequest.getEmail(), e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("OTP resend error for email {}: {}",
+                    resendOtpRequest.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to resend verification code!"));
+        }
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest loginRequest,
