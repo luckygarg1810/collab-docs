@@ -39,7 +39,7 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
                 .error("Validation Failed")
-                .message("Invalid input data")
+                .message(ex.getMessage())
                 .path(request.getDescription(false).replace("uri=", ""))
                 .validationErrors(validationErrors)
                 .build();
@@ -56,7 +56,7 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.UNAUTHORIZED.value(),
                 "Authentication Failed",
-                "Invalid email or password",
+                ex.getMessage(),
                 request.getDescription(false).replace("uri=", "")
         );
 
@@ -88,7 +88,7 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.NOT_FOUND.value(),
                 "User Not Found",
-                "User not found with provided email",
+                ex.getMessage(),
                 request.getDescription(false).replace("uri=", "")
         );
 
@@ -136,7 +136,7 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Runtime Error",
-                "An unexpected error occurred",
+                ex.getMessage(),
                 request.getDescription(false).replace("uri=", "")
         );
 
@@ -152,7 +152,7 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
-                "An unexpected error occurred",
+                ex.getMessage(),
                 request.getDescription(false).replace("uri=", "")
         );
 
