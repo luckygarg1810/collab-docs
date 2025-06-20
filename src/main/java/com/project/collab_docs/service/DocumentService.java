@@ -61,7 +61,7 @@ public class DocumentService {
 
         Document document = Document.builder()
                 .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(file.getOriginalFilename()))
-                .fileName(file.getOriginalFilename())
+                .fileName(!file.getOriginalFilename().isEmpty() ? file.getOriginalFilename() : "Untitled File")
                 .contentType(file.getContentType())
                 .content(content)
                 .fileSize(file.getSize())
@@ -125,35 +125,57 @@ public class DocumentService {
 
     private String extractContentFromDocx(MultipartFile file) throws IOException {
         try (XWPFDocument document = new XWPFDocument(file.getInputStream())) {
-            StringBuilder content = new StringBuilder();
-
-            for (XWPFParagraph paragraph : document.getParagraphs()) {
-                String text = paragraph.getText();
-                if (text != null && !text.trim().isEmpty()) {
-                    content.append(text).append("\n");
-                }
-            }
-
-            // Convert to basic Tiptap JSON format
-            String textContent = content.toString().trim();
-            if (textContent.isEmpty()) {
-                return BLANK_TIPTAP_JSON;
-            }
-
-            // Simple conversion - split by newlines and create paragraphs
             StringBuilder tiptapJson = new StringBuilder();
             tiptapJson.append("{\"type\":\"doc\",\"content\":[");
 
-            String[] lines = textContent.split("\n");
-            for (int i = 0; i < lines.length; i++) {
-                if (i > 0) tiptapJson.append(",");
-                tiptapJson.append("{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"")
-                        .append(escapeJson(lines[i]))
-                        .append("\"}]}");
+            boolean firstParagraph = true;
+            boolean hasContent = false;
+
+            for (XWPFParagraph paragraph : document.getParagraphs()) {
+                String text = paragraph.getText();
+
+                // Skip empty paragraphs but preserve structure
+                if (text == null) {
+                    text = "";
+                }
+
+                if (!firstParagraph) {
+                    tiptapJson.append(",");
+                }
+                firstParagraph = false;
+
+                // Create paragraph with proper JSON escaping
+                tiptapJson.append("{\"type\":\"paragraph\",\"content\":[");
+
+                if (!text.trim().isEmpty()) {
+                    tiptapJson.append("{\"type\":\"text\",\"text\":\"")
+                            .append(escapeJson(text))
+                            .append("\"}");
+                    hasContent = true;
+                } else {
+                    // Empty paragraph
+                    tiptapJson.append("{\"type\":\"text\",\"text\":\"\"}");
+                }
+
+                tiptapJson.append("]}");
             }
 
             tiptapJson.append("]}");
-            return tiptapJson.toString();
+
+            // If no content was found, return blank document
+            if (!hasContent) {
+                log.warn("No content extracted from DOCX file, returning blank document");
+                return BLANK_TIPTAP_JSON;
+            }
+
+            String result = tiptapJson.toString();
+            log.info("Extracted content from DOCX: {} characters", result.length());
+            log.debug("DOCX content preview: {}", result.substring(0, Math.min(200, result.length())));
+
+            return result;
+        } catch (Exception e) {
+            log.error("Error extracting content from DOCX: {}", e.getMessage(), e);
+            throw new IOException("Failed to extract content from DOCX file", e);
         }
     }
 
@@ -166,11 +188,15 @@ public class DocumentService {
     }
 
     private String escapeJson(String text) {
+        if (text == null) return "";
+
         return text.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
-                .replace("\t", "\\t");
+                .replace("\t", "\\t")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f");
     }
 
     private String getFileNameWithoutExtension(String fileName) {
