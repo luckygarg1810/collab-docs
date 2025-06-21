@@ -126,6 +126,35 @@
 			<artifactId>fop</artifactId>
 			<version>2.8</version>
 		</dependency>
+		<!-- PDF2Dom for PDF to HTML conversion -->
+		<dependency>
+			<groupId>net.sf.cssbox</groupId>
+			<artifactId>pdf2dom</artifactId>
+			<version>2.0.1</version>
+		</dependency>
+		<!-- PDFBox (required by PDF2Dom) -->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>2.0.30</version>
+		</dependency>
+		<!-- Additional PDFBox dependencies for better PDF support -->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>fontbox</artifactId>
+			<version>3.0.5</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox-tools</artifactId>
+			<version>3.0.5</version>
+		</dependency>
+		<!-- XML processing dependencies (if not already included) -->
+		<dependency>
+			<groupId>javax.xml.bind</groupId>
+			<artifactId>jaxb-api</artifactId>
+			<version>2.3.1</version>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>

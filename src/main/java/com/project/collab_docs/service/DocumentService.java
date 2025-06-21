@@ -7,11 +7,13 @@ import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.docx4j.Docx4J;
 import org.docx4j.convert.out.HTMLSettings;
 import org.docx4j.openpackaging.exceptions.Docx4JException;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
+import org.fit.pdfdom.PDFDomTree;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringWriter;
 import java.util.UUID;
 
 @Service
@@ -38,6 +41,7 @@ public class DocumentService {
 
         Document document = Document.builder()
                 .title(title)
+                .fileName(title + ".docx")
                 .content(BLANK_HTML_CONTENT)
                 .yjsRoomId(yjsRoomId)
                 .owner(owner)
@@ -215,15 +219,85 @@ public class DocumentService {
         return htmlContent.substring(bodyContentStart, bodyEnd);
     }
 
-
+    /**
+     * Extract rich text content from PDF file using PDF2Dom library
+     * This preserves formatting including fonts, colors, positioning, etc.
+     */
     private String extractContentFromPdf(MultipartFile file) throws IOException {
-        // For now, return a placeholder since PDF text extraction requires additional libraries
-        // In a real implementation, you would use libraries like PDFBox or iText
-        log.warn("PDF content extraction not fully implemented. Creating placeholder content.");
 
-        return "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"PDF content extraction is not yet implemented. Please convert to DOCX format.\"}]}]}";
+        PDDocument pdDocument = null;
+        try(InputStream inputStream = file.getInputStream()){
+          pdDocument = PDDocument.load(inputStream);
+
+            // Check if document has pages
+            if (pdDocument.getNumberOfPages() == 0) {
+                log.warn("PDF document appears to be empty, returning blank content");
+                return BLANK_HTML_CONTENT;
+            }
+            PDFDomTree pdfDomTree = new PDFDomTree();
+            // Convert PDF to DOM
+            StringWriter htmlWriter = new StringWriter();
+            pdfDomTree.writeText(pdDocument, htmlWriter);
+
+            String htmlContent = htmlWriter.toString();
+            // Clean up and process the HTML content
+            String cleanedHtml = cleanUpPdfHtmlContent(htmlContent);
+
+            log.info("Successfully extracted and converted PDF to HTML: {} characters from {} pages",
+                    cleanedHtml.length(), pdDocument.getNumberOfPages());
+            log.debug("HTML content preview: {}", cleanedHtml.substring(0, Math.min(500, cleanedHtml.length())));
+
+            return cleanedHtml;
+        }catch (IOException e) {
+            log.error("Error processing PDF file: {}", e.getMessage(), e);
+            throw new IOException("Failed to process PDF file: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Unexpected error extracting content from PDF: {}", e.getMessage(), e);
+            throw new IOException("Failed to extract content from PDF file", e);
+        } finally {
+            // Ensure PDF document is properly closed
+            if (pdDocument != null) {
+                try {
+                    pdDocument.close();
+                } catch (IOException e) {
+                    log.warn("Error closing PDF document: {}", e.getMessage());
+                }
+            }
+        }
     }
 
+    /**
+     * Clean up HTML content extracted from PDF
+     * PDF2Dom generates HTML with specific styling that needs to be processed
+     */
+    private String cleanUpPdfHtmlContent(String htmlContent) {
+        if (htmlContent == null || htmlContent.trim().isEmpty()) {
+            return BLANK_HTML_CONTENT;
+        }
+        try {
+            // Remove unnecessary whitespace and clean up the HTML
+            String cleanedContent = htmlContent
+                    .replaceAll("\\s+", " ") // Replace multiple whitespaces with single space
+                    .replaceAll("(?i)<meta[^>]*>", "") // Remove meta tags
+                    .replaceAll("(?i)<title[^>]*>.*?</title>", "") // Remove title tags
+                    .trim();
+            // Extract body content if present
+            String bodyContent = extractBodyContent(cleanedContent);
+
+            // If no meaningful content found, return blank
+            if (bodyContent.trim().isEmpty() ||
+                    bodyContent.matches("\\s*<[^>]*>\\s*") ||
+                    bodyContent.replace("&nbsp;", "").trim().isEmpty()) {
+                return BLANK_HTML_CONTENT;
+            }
+
+            // Wrap in a div to ensure proper structure for the editor
+            return "<div>" + bodyContent + "</div>";
+        }catch (Exception e) {
+            log.warn("Error cleaning up PDF HTML content, returning original: {}", e.getMessage());
+            return "<div>" + htmlContent + "</div>";
+        }
+    }
 
     private String getFileNameWithoutExtension(String fileName) {
         if (fileName == null || fileName.isEmpty()) {

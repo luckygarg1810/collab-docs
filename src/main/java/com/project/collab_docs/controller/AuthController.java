@@ -9,7 +9,6 @@ import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.security.JwtUtil;
 import com.project.collab_docs.service.PasswordResetService;
 import com.project.collab_docs.service.UserRegistrationService;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +25,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/auth")
