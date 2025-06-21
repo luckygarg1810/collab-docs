@@ -7,13 +7,18 @@ import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.docx4j.Docx4J;
+import org.docx4j.convert.out.HTMLSettings;
+import org.docx4j.openpackaging.exceptions.Docx4JException;
+import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
+import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.UUID;
 
 @Service
@@ -22,9 +27,9 @@ import java.util.UUID;
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
-    private static final String BLANK_TIPTAP_JSON =
-            "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"\"}]}]}";
-
+    // Default blank HTML content for new documents
+    private static final String BLANK_HTML_CONTENT =
+            "<div><p><br></p></div>";
 
     @Transactional
     public Document createBlankDocument(String title, User owner) {
@@ -33,10 +38,10 @@ public class DocumentService {
 
         Document document = Document.builder()
                 .title(title)
-                .content(BLANK_TIPTAP_JSON)
+                .content(BLANK_HTML_CONTENT)
                 .yjsRoomId(yjsRoomId)
                 .owner(owner)
-                .contentType("application/json") // Tiptap JSON
+                .contentType("text/html") // Storing as HTML
                 .fileSize(0L)
                 .visibility(Visibility.PRIVATE) // Default to private
                 .isDeleted(false)
@@ -62,7 +67,7 @@ public class DocumentService {
         Document document = Document.builder()
                 .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(file.getOriginalFilename()))
                 .fileName(!file.getOriginalFilename().isEmpty() ? file.getOriginalFilename() : "Untitled File")
-                .contentType(file.getContentType())
+                .contentType("text/html")
                 .content(content)
                 .fileSize(file.getSize())
                 .yjsRoomId(yjsRoomId)
@@ -89,7 +94,7 @@ public class DocumentService {
 
         // 20MB limit
         if (file.getSize() > 20 * 1024 * 1024) {
-            throw new IllegalArgumentException("File size cannot exceed 10MB");
+            throw new IllegalArgumentException("File size cannot exceed 20MB");
         }
     }
 
@@ -123,61 +128,93 @@ public class DocumentService {
         throw new IllegalArgumentException("Unsupported file type: " + contentType);
     }
 
+    /**
+     * Extract content from DOCX file using docx4j library and convert to HTML
+     * This preserves rich text formatting including bold, italic, fonts, colors, etc.
+     */
+
     private String extractContentFromDocx(MultipartFile file) throws IOException {
-        try (XWPFDocument document = new XWPFDocument(file.getInputStream())) {
-            StringBuilder tiptapJson = new StringBuilder();
-            tiptapJson.append("{\"type\":\"doc\",\"content\":[");
+        try (InputStream inputStream = file.getInputStream()) {
+            // Load the DOCX document
+            WordprocessingMLPackage wordPackage = WordprocessingMLPackage.load(inputStream);
+            // Get the main document part
+            MainDocumentPart mainDocumentPart = wordPackage.getMainDocumentPart();
 
-            boolean firstParagraph = true;
-            boolean hasContent = false;
-
-            for (XWPFParagraph paragraph : document.getParagraphs()) {
-                String text = paragraph.getText();
-
-                // Skip empty paragraphs but preserve structure
-                if (text == null) {
-                    text = "";
-                }
-
-                if (!firstParagraph) {
-                    tiptapJson.append(",");
-                }
-                firstParagraph = false;
-
-                // Create paragraph with proper JSON escaping
-                tiptapJson.append("{\"type\":\"paragraph\",\"content\":[");
-
-                if (!text.trim().isEmpty()) {
-                    tiptapJson.append("{\"type\":\"text\",\"text\":\"")
-                            .append(escapeJson(text))
-                            .append("\"}");
-                    hasContent = true;
-                } else {
-                    // Empty paragraph
-                    tiptapJson.append("{\"type\":\"text\",\"text\":\"\"}");
-                }
-
-                tiptapJson.append("]}");
+            // Check if document has content
+            if (mainDocumentPart == null || mainDocumentPart.getContent().isEmpty()) {
+                log.warn("DOCX document appears to be empty, returning blank content");
+                return BLANK_HTML_CONTENT;
             }
 
-            tiptapJson.append("]}");
+            // Configure HTML settings for conversion
+            HTMLSettings htmlSettings = Docx4J.createHTMLSettings();
+            htmlSettings.setImageDirPath("images"); // Directory for images (if any)
+            htmlSettings.setImageTargetUri("images"); // URI for images
+            htmlSettings.setOpcPackage(wordPackage);
 
-            // If no content was found, return blank document
-            if (!hasContent) {
-                log.warn("No content extracted from DOCX file, returning blank document");
-                return BLANK_TIPTAP_JSON;
-            }
+            // Convert to HTML
+            ByteArrayOutputStream htmlOutputStream = new ByteArrayOutputStream();
+            Docx4J.toHTML(htmlSettings, htmlOutputStream, Docx4J.FLAG_EXPORT_PREFER_XSL);
 
-            String result = tiptapJson.toString();
-            log.info("Extracted content from DOCX: {} characters", result.length());
-            log.debug("DOCX content preview: {}", result.substring(0, Math.min(200, result.length())));
+            String htmlContent = htmlOutputStream.toString("UTF-8");
+            // Clean up the HTML content
+            String cleanedHtml = cleanUpHtmlContent(htmlContent);
 
-            return result;
+            log.info("Successfully extracted and converted DOCX to HTML: {} characters", cleanedHtml.length());
+            log.debug("HTML content preview: {}", cleanedHtml.substring(0, Math.min(500, cleanedHtml.length())));
+
+            return cleanedHtml;
+        } catch (Docx4JException e) {
+            log.error("Error processing DOCX with docx4j: {}", e.getMessage(), e);
+            throw new IOException("Failed to process DOCX file: " + e.getMessage(), e);
         } catch (Exception e) {
-            log.error("Error extracting content from DOCX: {}", e.getMessage(), e);
+            log.error("Unexpected error extracting content from DOCX: {}", e.getMessage(), e);
             throw new IOException("Failed to extract content from DOCX file", e);
         }
     }
+    private String cleanUpHtmlContent(String htmlContent) {
+        if (htmlContent == null || htmlContent.trim().isEmpty()) {
+            return BLANK_HTML_CONTENT;
+        }
+
+        // Remove HTML document structure, keep only body content
+        String bodyContent = extractBodyContent(htmlContent);
+        // If no meaningful content found, return blank
+        if (bodyContent.trim().isEmpty() || bodyContent.matches("\\s*<[^>]*>\\s*")) {
+            return BLANK_HTML_CONTENT;
+        }
+
+        // Wrap in a div to ensure proper structure
+        return "<div>" + bodyContent + "</div>";
+    }
+    private String extractBodyContent(String htmlContent) {
+        if (htmlContent == null) {
+            return "";
+        }
+
+        // Find body tag content
+        String lowerHtml = htmlContent.toLowerCase();
+        int bodyStart = lowerHtml.indexOf("<body");
+        if (bodyStart == -1) {
+            // No body tag, return content as is (might be fragment)
+            return htmlContent;
+        }
+
+        // Find the end of opening body tag
+        int bodyContentStart = htmlContent.indexOf('>', bodyStart) + 1;
+        if (bodyContentStart <= bodyStart) {
+            return htmlContent;
+        }
+
+        // Find closing body tag
+        int bodyEnd = lowerHtml.lastIndexOf("</body>");
+        if (bodyEnd == -1) {
+            return htmlContent.substring(bodyContentStart);
+        }
+
+        return htmlContent.substring(bodyContentStart, bodyEnd);
+    }
+
 
     private String extractContentFromPdf(MultipartFile file) throws IOException {
         // For now, return a placeholder since PDF text extraction requires additional libraries
@@ -187,17 +224,6 @@ public class DocumentService {
         return "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"PDF content extraction is not yet implemented. Please convert to DOCX format.\"}]}]}";
     }
 
-    private String escapeJson(String text) {
-        if (text == null) return "";
-
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t")
-                .replace("\b", "\\b")
-                .replace("\f", "\\f");
-    }
 
     private String getFileNameWithoutExtension(String fileName) {
         if (fileName == null || fileName.isEmpty()) {
