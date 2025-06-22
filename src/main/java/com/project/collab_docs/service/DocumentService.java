@@ -13,7 +13,11 @@ import org.docx4j.convert.out.HTMLSettings;
 import org.docx4j.openpackaging.exceptions.Docx4JException;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
+import org.docx4j.wml.U;
 import org.fit.pdfdom.PDFDomTree;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,6 +59,68 @@ public class DocumentService {
         log.info("Created blank document with ID: {} for user: {}", savedDocument.getId(), owner.getEmail());
 
         return savedDocument;
+    }
+
+    @Transactional(readOnly = true)
+    public Document getDocumentById(Long documentId, User requestingUser){
+       Document document =
+               documentRepository.findByIdAndIsDeletedFalse(documentId).
+                       orElseThrow(() -> new IllegalArgumentException("Document not found"));
+
+       if(!hasDocumentAccess(document, requestingUser)){
+           throw new IllegalArgumentException("Access denied. You don't have permission to view this document");
+       }
+        if (document.getContent() != null) {
+            document.getContent().length(); // Force lazy loading
+        }
+        log.info("Document {} accessed by user: {}", documentId, requestingUser.getEmail());
+        return document;
+    }
+
+    private boolean hasDocumentAccess(Document document, User requestingUser){
+        if (document.getOwner().getId().equals(requestingUser.getId())){
+            return true;
+        }
+
+        return switch (document.getVisibility()) {
+            case PUBLIC -> true;
+            case SHARED ->
+                // TODO: Implement shared document logic
+                // This might involve checking a separate permissions table
+                // For now, treating shared as accessible (modify as needed)
+                    true;
+            default -> false;
+        };
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DocumentResponse> getUserDocuments(User user, int page, int size){
+        try {
+            // Validate pagination parameters
+            if (page < 0) {
+                throw new IllegalArgumentException("Page number cannot be negative");
+            }
+            if (size <= 0 || size > 100) {
+                throw new IllegalArgumentException("Page size must be between 1 and 100");
+            }
+            Pageable pageable = PageRequest.of(page, size);
+
+            // Fetch user's documents (non-deleted only)
+            Page<Document> documentsPage = documentRepository.findByOwnerAndIsDeletedFalse(user, pageable);
+            // Convert to DocumentResponse objects
+            Page<DocumentResponse> documentResponsePage = documentsPage.map(this::mapToDocumentResponse);
+            log.info("Retrieved {} documents for user: {} (page: {}, size: {})",
+                    documentsPage.getTotalElements(), user.getEmail(), page, size);
+
+            return documentResponsePage;
+
+        }catch (IllegalArgumentException e) {
+            log.error("Invalid parameters for getUserDocuments: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error retrieving documents for user {}: {}", user.getEmail(), e.getMessage(), e);
+            throw new RuntimeException("Failed to retrieve user documents", e);
+        }
     }
 
     @Transactional
@@ -119,7 +185,6 @@ public class DocumentService {
                 .updatedAt(document.getUpdatedAt())
                 .build();
     }
-
 
     private String extractContentFromFile(MultipartFile file) throws IOException {
         String contentType = file.getContentType();
@@ -367,5 +432,39 @@ public class DocumentService {
             roomId = "doc_" + UUID.randomUUID().toString().replace("-", "");
         } while (documentRepository.existsByYjsRoomId(roomId));
         return roomId;
+    }
+
+    public byte[] getYjsSnapshot(String yjsRoomId) {
+        try{
+            // Validate input
+            if (yjsRoomId == null || yjsRoomId.trim().isEmpty()) {
+                throw new IllegalArgumentException("YJS room ID cannot be null or empty");
+            }
+
+            String cleanRoomId = yjsRoomId.trim();
+            // Find document by YJS room ID
+            Document document = documentRepository.findByYjsRoomIdAndIsDeletedFalse(cleanRoomId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Document not found or has been deleted for room ID: " + cleanRoomId));
+
+            // Get the YJS snapshot
+            byte[] snapshot = document.getYjsSnapshot();
+            if (snapshot == null || snapshot.length == 0) {
+                log.info("No YJS snapshot found for room ID: {}, returning empty snapshot", cleanRoomId);
+                // Return empty byte array if no snapshot exists
+                return new byte[0];
+            }
+
+            log.info("Retrieved YJS snapshot for room ID: {}, size: {} bytes",
+                    cleanRoomId, snapshot.length);
+
+            return snapshot;
+        }catch (IllegalArgumentException e) {
+            log.error("Invalid request for YJS snapshot: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error retrieving YJS snapshot for room ID {}: {}", yjsRoomId, e.getMessage(), e);
+            throw new RuntimeException("Failed to retrieve YJS snapshot", e);
+        }
     }
 }

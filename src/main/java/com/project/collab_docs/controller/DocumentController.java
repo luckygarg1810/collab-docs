@@ -11,12 +11,15 @@ import com.project.collab_docs.service.DocumentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.docx4j.wml.R;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.print.Doc;
 import java.io.IOException;
 
 @RestController
@@ -26,6 +29,48 @@ import java.io.IOException;
 public class DocumentController {
 
     private final DocumentService documentService;
+
+    @GetMapping
+    public ResponseEntity<?> getDocumentDetails(@RequestParam(value = "document_id") Long documentId,
+                                                Authentication authentication) {
+        try {
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            User user = userDetails.getUser();
+
+            Document document = documentService.getDocumentById(documentId, user);
+            DocumentResponse response = documentService.mapToDocumentResponse(document);
+            // Log access for audit trail
+            //auditService.logDocumentAccess(user.getId(), documentId, "VIEW");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).
+                    body(new MessageResponse("Error: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error retrieving document: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).
+                    body(new MessageResponse("Error: Failed to retrieve document!"));
+        }
+    }
+
+    @GetMapping("/user/documents")
+    public ResponseEntity<?> getUserDocuments(@RequestParam(defaultValue = "0") int page,
+                                              @RequestParam(defaultValue = "20") int size,
+                                              Authentication authentication) {
+        try {
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            User user = userDetails.getUser();
+
+            Page<DocumentResponse> documents = documentService.getUserDocuments(
+                    user, page, size);
+
+            return ResponseEntity.ok(documents);
+        } catch (Exception e) {
+            log.error("Error retrieving user documents: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to retrieve documents!"));
+        }
+    }
 
     @PostMapping("/create")
     public ResponseEntity<?> createBlankDocument(
@@ -42,7 +87,6 @@ public class DocumentController {
 
             Document document = documentService.createBlankDocument(title.trim(), user);
             DocumentResponse response = documentService.mapToDocumentResponse(document);
-
             log.info("Created blank document '{}' for user: {}", title, user.getEmail());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -64,7 +108,6 @@ public class DocumentController {
 
             Document document = documentService.uploadDocument(file, title, user);
             DocumentResponse response = documentService.mapToDocumentResponse(document);
-
             log.info("Uploaded document '{}' for user: {}", document.getTitle(), user.getEmail());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -93,7 +136,6 @@ public class DocumentController {
             User user = userDetails.getUser();
 
             documentService.updateDocumentVisibility(documentId, request.getVisibility(), user);
-
             log.info("Updated document {} visibility to: {} by user: {}",
                     documentId, request.getVisibility(), user.getEmail());
             return ResponseEntity.ok(new MessageResponse("Document visibility updated successfully!"));
@@ -118,7 +160,6 @@ public class DocumentController {
             User user = userDetails.getUser();
 
             documentService.softDeleteDocument(documentId, user);
-
             log.info("Deleted document {} by user: {}", documentId, user.getEmail());
             return ResponseEntity.ok(new MessageResponse("Document deleted successfully!"));
 
@@ -139,7 +180,6 @@ public class DocumentController {
             @RequestParam("snapshot") byte[] snapshot) {
         try {
             documentService.saveYjsSnapshot(yjsRoomId, snapshot);
-
             log.info("Saved Yjs snapshot for room: {}", yjsRoomId);
             return ResponseEntity.ok(new MessageResponse("Yjs snapshot saved successfully!"));
 
@@ -149,5 +189,18 @@ public class DocumentController {
                     .body(new MessageResponse("Error: Failed to save Yjs snapshot!"));
         }
     }
+
+    @GetMapping("/yjs-snapshot/{yjsRoomId}")
+    public ResponseEntity<?> getYjsSnapshot(@PathVariable String yjsRoomId) {
+        try {
+            byte[] snapshot = documentService.getYjsSnapshot(yjsRoomId);
+            return ResponseEntity.ok(snapshot);
+        } catch (Exception e) {
+            log.error("Error retrieving Yjs snapshot: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to retrieve snapshot!"));
+        }
+    }
+
 
 }

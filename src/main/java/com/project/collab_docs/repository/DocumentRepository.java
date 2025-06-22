@@ -3,6 +3,8 @@ package com.project.collab_docs.repository;
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.enums.Visibility;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -35,4 +37,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
 
     // Find document by ID (non-deleted)
     Optional<Document> findByIdAndIsDeletedFalse(Long id);
+
+    Page<Document> findByOwnerAndIsDeletedFalse(User owner, Pageable pageable);
 }
