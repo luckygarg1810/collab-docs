@@ -31,7 +31,7 @@ public class DocumentController {
     private final DocumentService documentService;
 
     @GetMapping
-    public ResponseEntity<?> getDocumentDetails(@RequestParam(value = "document_id") Long documentId,
+    public ResponseEntity<?> getDocument(@RequestParam(value = "document_id") Long documentId,
                                                 Authentication authentication) {
         try {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
