@@ -121,7 +121,7 @@ public class AuthController {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
 
             // Generate JWT token
-            String jwtToken = jwtUtil.generateToken(userDetails.getEmail());
+            String jwtToken = jwtUtil.generateToken(userDetails);
 
             // Create HTTP-only cookie for JWT
            setJwtCookie(response,jwtToken);
@@ -267,7 +267,7 @@ public class AuthController {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
 
             // Generate new JWT token
-            String newJwtToken = jwtUtil.generateToken(userDetails.getEmail());
+            String newJwtToken = jwtUtil.generateToken(userDetails);
 
             // Create new HTTP-only cookie for JWT
            setJwtCookie(response, newJwtToken);

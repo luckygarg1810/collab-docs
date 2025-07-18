@@ -1,22 +1,38 @@
 package com.project.collab_docs.security;
 
 import com.project.collab_docs.entities.User;
-import lombok.AllArgsConstructor;
+import io.jsonwebtoken.Claims;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Getter
 public class CustomUserDetails implements UserDetails {
     private final User user;
+    private final Collection<? extends GrantedAuthority> authorities;
 
     public CustomUserDetails(User user) {
         this.user = user;
+        this.authorities = Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
+    }
+
+    public CustomUserDetails(Claims claims) {
+        this.user = new User();
+        user.setEmail(claims.getSubject());
+        user.setFirstName((String) claims.get("firstName"));
+        user.setLastName((String) claims.get("lastName"));
+        // We don't have the ID or password here, which is fine for authorization
+
+        String roles = (String) claims.get("roles");
+        this.authorities = Arrays.stream(roles.split(","))
+                .map(SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
     }
 
     @Override
