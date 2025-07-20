@@ -38,8 +38,11 @@ public class UserRegistrationService {
             throw new RuntimeException("Email is already registered");
         }
 
-        // Clean up any existing pending registration for this email
-        pendingUserRepository.deleteByEmail(email);
+        if(pendingUserRepository.existsByEmail(email)) {
+            // Clean up any existing pending registration for this email
+            System.out.println("Pending User Exists");
+            pendingUserRepository.deleteByEmail(registerRequest.getEmail());
+        }
 
         // Create pending user
         PendingUser pendingUser = PendingUser.builder()

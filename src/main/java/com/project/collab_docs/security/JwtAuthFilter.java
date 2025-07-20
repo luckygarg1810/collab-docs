@@ -1,5 +1,6 @@
 package com.project.collab_docs.security;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -24,8 +25,6 @@ import java.util.Arrays;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final UserDetailsServiceImpl userDetailsService;
-
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -39,7 +38,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String email = jwtUtil.getEmailFromToken(token);
 
                 if (StringUtils.hasText(email) && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                    Claims claims = jwtUtil.getClaimsFromToken(token);
+                    UserDetails userDetails = new CustomUserDetails(claims);
 
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(

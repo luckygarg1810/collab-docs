@@ -63,12 +63,12 @@ public class SecurityConfig {
 
     @Bean
     public JwtAuthFilter jwtAuthenticationFilter() {
-        return new JwtAuthFilter(jwtUtil, userDetailsService);
+        return new JwtAuthFilter(jwtUtil);
     }
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);  // Password encoding
+        return new BCryptPasswordEncoder(10);  // Password encoding
     }
 
     @Bean
