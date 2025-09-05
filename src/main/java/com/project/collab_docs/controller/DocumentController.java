@@ -11,7 +11,6 @@ import com.project.collab_docs.service.DocumentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.docx4j.wml.R;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +18,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.print.Doc;
 import java.io.IOException;
 
 @RestController
@@ -201,6 +199,4 @@ public class DocumentController {
                     .body(new MessageResponse("Error: Failed to retrieve snapshot!"));
         }
     }
-
-
 }

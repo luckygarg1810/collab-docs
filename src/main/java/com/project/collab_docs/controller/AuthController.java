@@ -226,7 +226,6 @@ public class AuthController {
         }
     }
 
-
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(Authentication authentication) {
         try {

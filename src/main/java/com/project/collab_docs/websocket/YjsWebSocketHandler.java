@@ -18,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @RequiredArgsConstructor
 @Slf4j
 public class YjsWebSocketHandler extends BinaryWebSocketHandler{
+
     private final YjsCollaborationService yjsCollaborationService;
 
     // Track active sessions per document room

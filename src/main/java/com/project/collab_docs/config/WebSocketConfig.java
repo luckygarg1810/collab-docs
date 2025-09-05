@@ -14,7 +14,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final YjsWebSocketHandler yjsWebSocketHandler;
 
-    @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
 
         // Register Yjs WebSocket handler for document collaboration
