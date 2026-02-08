@@ -45,6 +45,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .issuer("collab_docs")
                 .subject(userDetails.getEmail())
+                .claim("userId", userDetails.getUser().getId())
                 .claim("firstName", userDetails.getFirstName())
                 .claim("lastName", userDetails.getLastName())
                 .claim("roles", roles)

@@ -1,7 +1,7 @@
 # Collab-Docs - Current Implementation State
 
 **Last Updated:** 2026-02-08  
-**Version:** Phase 2 Complete - Node.js Yjs Service + WebSocket Auth
+**Version:** Phase 1 Complete - Docker Setup
 
 ---
 
@@ -29,8 +29,6 @@ curl http://localhost:8080/actuator/health
 ### Services Running
 - **Backend API**: http://localhost:8080
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
-- **Yjs Service**: http://localhost:3000
-- **Yjs WebSocket**: ws://localhost:3000/ws/yjs/{documentId}
 - **PostgreSQL**: localhost:5432 (database: collab_docs)
 - **Redis**: localhost:6379
 
@@ -189,111 +187,36 @@ curl -X DELETE http://localhost:8080/api/documents/1 \
 
 ---
 
-### 3. Real-Time Collaboration (WebSocket) - ✅ NOW AUTHENTICATED!
+### 3. Real-Time Collaboration (WebSocket)
 
-**Yjs Service Endpoints:**
-
-#### **Health Check**
-```bash
-curl http://localhost:3000/health
-
-# Response:
-# {
-#   "status": "UP",
-#   "service": "yjs-collaboration",
-#   "timestamp": "2026-02-08T10:45:00.000Z",
-#   "stats": {
-#     "activeDocuments": 5,
-#     "activeAwarenesses": 5
-#   }
-# }
-```
-
-#### **Get Active Users in Document**
-```bash
-curl http://localhost:3000/api/documents/uuid-room-id/users
-
-# Response:
-# {
-#   "users": [
-#     {
-#       "userId": "1",
-#       "name": "John Doe",
-#       "email": "john@example.com",
-#       "joinedAt": 1707392700000
-#     }
-#   ],
-#   "count": 1
-# }
-```
-
-#### **WebSocket Connection** (with JWT Authentication)
+⚠️ **SECURITY WARNING**: Currently has NO authentication!
 
 ```javascript
-// 1. First, login to get JWT token
-const loginResponse = await fetch('http://localhost:8080/api/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  credentials: 'include',
-  body: JSON.stringify({
-    email: 'john.doe@example.com',
-    password: 'SecurePass123!'
-  })
-});
-
-// 2. Extract JWT from cookie or use it directly
-const token = 'your-jwt-token';  // From cookie or response
-
-// 3. Connect to Yjs service with authentication
-const documentId = 'uuid-room-id';
-const ws = new WebSocket(`ws://localhost:3000/ws/yjs/${documentId}?token=${token}`);
-
-ws.onopen = () => {
-  console.log('Connected to document with authentication!');
-};
+// Connect to document
+const ws = new WebSocket('ws://localhost:8080/ws/yjs/uuid-room-id');
 
 ws.onmessage = (event) => {
-  const data = new Uint8Array(event.data);
-  console.log('Received Yjs update:', data);
+  // Receive Yjs updates
+  const updateData = event.data;
 };
 
-ws.onerror = (error) => {
-  console.error('WebSocket error:', error);
-};
-
-ws.onclose = (event) => {
-  console.log('Disconnected:', event.code, event.reason);
-};
+// Send Yjs update
+const update = new Uint8Array([/* binary */]);
+ws.send(update);
 ```
-
-**Alternative: Authorization Header**
-```javascript
-const ws = new WebSocket('ws://localhost:3000/ws/yjs/uuid-room-id', {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-```
-
-**Security Features:**
-- ✅ JWT authentication required
-- ✅ Token validated before connection
-- ✅ User permissions checked
-- ✅ Heartbeat monitoring (30s intervals)
-- ✅ Graceful disconnection handling
 
 ---
 
 ## ❌ Not Yet Implemented
 
-- RBAC (roles, permissions) - **Phase 3 Priority**
-- Document sharing (links, invitations) - **Phase 4**
-- Document versioning - **Phase 5**
-- Audit logging - **Phase 6**
-- Export APIs - **Phase 7**
-- Rate limiting - **Phase 8**
-- ~~WebSocket authentication~~ ✅ **DONE in Phase 2**
-- ~~Presence awareness~~ ✅ **Basic implementation in Phase 2**
+- RBAC (roles, permissions)
+- Document sharing (links, invitations)
+- Document versioning
+- Audit logging
+- Export APIs
+- Rate limiting
+- WebSocket authentication
+- Presence awareness
 
 ---
 
@@ -361,30 +284,26 @@ curl -X POST http://localhost:8080/api/documents/create \
 
 ## 📊 Known Issues
 
-**Fixed in Phase 2:**
-- ✅ WebSocket authentication - **FIXED**
-- ✅ No user tracking - **FIXED (Redis presence tracking)**
-
 **Critical:**
-- ❌ No permission system (RBAC)
+- ❌ WebSocket has no authentication
+- ❌ No permission system
 - ❌ No rate limiting
 
 **High:**
 - No audit logging
 - No versioning
-- ~~GraalVM Yjs needs replacement~~ ✅ **REPLACED with Node.js service**
+- GraalVM Yjs needs replacement
 
 ---
 
-## 🚀 Next: Phase 3 - RBAC & Permissions
+## 🚀 Next: Phase 2 - Node.js Yjs Microservice
 
-Phase 2 Complete! ✅
+Phase 1 Complete! ✅
 
 Next will implement:
-- Role-based access control (Owner, Editor, Viewer)
-- Document permissions management
-- Share/collaboration permissions
-- Permission checks in WebSocket connections
+- Node.js Yjs collaboration service
+- WebSocket authentication
+- Integration with Spring Boot backend
 
 ---
 
@@ -394,4 +313,3 @@ Next will implement:
 |------|-------|---------|
 | 2026-02-08 | Baseline | Initial state documentation |
 | 2026-02-08 | Phase 1 | ✅ Docker setup complete (compose, Dockerfile, test script) |
-| 2026-02-08 | Phase 2 | ✅ Node.js Yjs service with WebSocket authentication, Redis persistence |

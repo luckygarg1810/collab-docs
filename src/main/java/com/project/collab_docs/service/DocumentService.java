@@ -13,7 +13,6 @@ import org.docx4j.convert.out.HTMLSettings;
 import org.docx4j.openpackaging.exceptions.Docx4JException;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
-import org.docx4j.wml.U;
 import org.fit.pdfdom.PDFDomTree;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,8 +34,7 @@ public class DocumentService {
 
     private final DocumentRepository documentRepository;
     // Default blank HTML content for new documents
-    private static final String BLANK_HTML_CONTENT =
-            "<div><p><br></p></div>";
+    private static final String BLANK_HTML_CONTENT = "<div><p><br></p></div>";
 
     @Transactional
     public Document createBlankDocument(String title, User owner) {
@@ -62,14 +60,13 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public Document getDocumentById(Long documentId, User requestingUser){
-       Document document =
-               documentRepository.findByIdAndIsDeletedFalse(documentId).
-                       orElseThrow(() -> new IllegalArgumentException("Document not found"));
+    public Document getDocumentById(Long documentId, User requestingUser) {
+        Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
 
-       if(!hasDocumentAccess(document, requestingUser)){
-           throw new IllegalArgumentException("Access denied. You don't have permission to view this document");
-       }
+        if (!hasDocumentAccess(document, requestingUser)) {
+            throw new IllegalArgumentException("Access denied. You don't have permission to view this document");
+        }
         if (document.getContent() != null) {
             document.getContent().length(); // Force lazy loading
         }
@@ -77,8 +74,8 @@ public class DocumentService {
         return document;
     }
 
-    private boolean hasDocumentAccess(Document document, User requestingUser){
-        if (document.getOwner().getId().equals(requestingUser.getId())){
+    private boolean hasDocumentAccess(Document document, User requestingUser) {
+        if (document.getOwner().getId().equals(requestingUser.getId())) {
             return true;
         }
 
@@ -88,13 +85,13 @@ public class DocumentService {
                 // TODO: Implement shared document logic
                 // This might involve checking a separate permissions table
                 // For now, treating shared as accessible (modify as needed)
-                    true;
+                true;
             default -> false;
         };
     }
 
     @Transactional(readOnly = true)
-    public Page<DocumentResponse> getUserDocuments(User user, int page, int size){
+    public Page<DocumentResponse> getUserDocuments(User user, int page, int size) {
         try {
             // Validate pagination parameters
             if (page < 0) {
@@ -114,7 +111,7 @@ public class DocumentService {
 
             return documentResponsePage;
 
-        }catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             log.error("Invalid parameters for getUserDocuments: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
@@ -134,9 +131,15 @@ public class DocumentService {
         // Extract content based on file type
         String content = extractContentFromFile(file);
 
+        // Safely handle potential null filename
+        String originalFilename = file.getOriginalFilename();
+        String fileName = (originalFilename != null && !originalFilename.isEmpty())
+                ? originalFilename
+                : "Untitled File";
+
         Document document = Document.builder()
-                .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(file.getOriginalFilename()))
-                .fileName(!file.getOriginalFilename().isEmpty() ? file.getOriginalFilename() : "Untitled File")
+                .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(fileName))
+                .fileName(fileName)
                 .contentType("text/html")
                 .content(content)
                 .fileSize(file.getSize())
@@ -158,7 +161,9 @@ public class DocumentService {
         }
 
         String contentType = file.getContentType();
-        if (!contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") && !contentType.equals("application/pdf")) {
+        if (contentType == null
+                || !contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                        && !contentType.equals("application/pdf")) {
             throw new IllegalArgumentException("Only DOCX and PDF files are supported");
         }
 
@@ -199,7 +204,8 @@ public class DocumentService {
 
     /**
      * Extract content from DOCX file using docx4j library and convert to HTML
-     * This preserves rich text formatting including bold, italic, fonts, colors, etc.
+     * This preserves rich text formatting including bold, italic, fonts, colors,
+     * etc.
      */
 
     private String extractContentFromDocx(MultipartFile file) throws IOException {
@@ -241,6 +247,7 @@ public class DocumentService {
             throw new IOException("Failed to extract content from DOCX file", e);
         }
     }
+
     private String cleanUpHtmlContent(String htmlContent) {
         if (htmlContent == null || htmlContent.trim().isEmpty()) {
             return BLANK_HTML_CONTENT;
@@ -256,6 +263,7 @@ public class DocumentService {
         // Wrap in a div to ensure proper structure
         return "<div>" + bodyContent + "</div>";
     }
+
     private String extractBodyContent(String htmlContent) {
         if (htmlContent == null) {
             return "";
@@ -291,8 +299,8 @@ public class DocumentService {
     private String extractContentFromPdf(MultipartFile file) throws IOException {
 
         PDDocument pdDocument = null;
-        try(InputStream inputStream = file.getInputStream()){
-          pdDocument = PDDocument.load(inputStream);
+        try (InputStream inputStream = file.getInputStream()) {
+            pdDocument = PDDocument.load(inputStream);
 
             // Check if document has pages
             if (pdDocument.getNumberOfPages() == 0) {
@@ -313,7 +321,7 @@ public class DocumentService {
             log.debug("HTML content preview: {}", cleanedHtml.substring(0, Math.min(500, cleanedHtml.length())));
 
             return cleanedHtml;
-        }catch (IOException e) {
+        } catch (IOException e) {
             log.error("Error processing PDF file: {}", e.getMessage(), e);
             throw new IOException("Failed to process PDF file: " + e.getMessage(), e);
         } catch (Exception e) {
@@ -358,7 +366,7 @@ public class DocumentService {
 
             // Wrap in a div to ensure proper structure for the editor
             return "<div>" + bodyContent + "</div>";
-        }catch (Exception e) {
+        } catch (Exception e) {
             log.warn("Error cleaning up PDF HTML content, returning original: {}", e.getMessage());
             return "<div>" + htmlContent + "</div>";
         }
@@ -405,7 +413,8 @@ public class DocumentService {
     }
 
     private boolean isValidVisibility(Visibility visibility) {
-        return Visibility.PRIVATE.equals(visibility) || Visibility.PUBLIC.equals(visibility) || Visibility.SHARED.equals(visibility);
+        return Visibility.PRIVATE.equals(visibility) || Visibility.PUBLIC.equals(visibility)
+                || Visibility.SHARED.equals(visibility);
     }
 
     @Transactional
@@ -425,7 +434,6 @@ public class DocumentService {
         log.info("Soft deleted document with ID: {} by user: {}", documentId, user.getEmail());
     }
 
-
     private String generateUniqueYjsRoomId() {
         String roomId;
         do {
@@ -435,7 +443,7 @@ public class DocumentService {
     }
 
     public byte[] getYjsSnapshot(String yjsRoomId) {
-        try{
+        try {
             // Validate input
             if (yjsRoomId == null || yjsRoomId.trim().isEmpty()) {
                 throw new IllegalArgumentException("YJS room ID cannot be null or empty");
@@ -459,7 +467,7 @@ public class DocumentService {
                     cleanRoomId, snapshot.length);
 
             return snapshot;
-        }catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             log.error("Invalid request for YJS snapshot: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
