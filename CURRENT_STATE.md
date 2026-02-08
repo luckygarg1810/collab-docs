@@ -1,309 +1,300 @@
 # Collab-Docs - Current Implementation State
 
 **Last Updated:** 2026-02-08  
-**Version:** Phase 1 Complete - Docker Setup
+**Version:** Phase 3 Complete - Production-Ready Microservices Architecture
 
 ---
 
-## 🐳 Docker Quick Start (NEW!)
+## 🎯 Architecture Overview
 
-### First Time Setup
+**Microservices Stack:**
+- **Spring Boot Backend** - REST API, Auth, PostgreSQL persistence
+- **Node.js Yjs Service** - Real-time collaboration, WebSocket, Redis
+- **PostgreSQL** - Primary database
+- **Redis** - Yjs document state cache
+
+---
+
+## 🐳 Docker Quick Start
+
 ```bash
-# 1. Copy environment template
+# 1. Setup environment
 cp .env.example .env
+# Edit .env with your credentials
 
-# 2. Edit .env with your credentials
-nano .env
-# Update: POSTGRES_PASSWORD, REDIS_PASSWORD, JWT_SECRET, EMAIL_USERNAME, EMAIL_PASSWORD
-
-# 3. Start all services
+# 2. Start all services
 docker-compose up -d
 
-# 4. Run verification script
-./docker-test.sh
-
-# 5. Check health
+# 3. Verify health
 curl http://localhost:8080/actuator/health
+curl http://localhost:3000/health
 ```
 
 ### Services Running
 - **Backend API**: http://localhost:8080
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
-- **PostgreSQL**: localhost:5432 (database: collab_docs)
+- **Yjs Service**: http://localhost:3001
+- **Yjs WebSocket**: ws://localhost:3001/ws/yjs/{documentId}?token={jwt}
+- **PostgreSQL**: localhost:5433 (mapped from container's 5432)
 - **Redis**: localhost:6379
 
-See **[DOCKER_SETUP.md](file:///home/lucky/collab-docs/DOCKER_SETUP.md)** for complete documentation.
-
----
-
-## 🎯 Quick Start
-
-**Base URL:** `http://localhost:8080`
-
-**Prerequisites:**
-- PostgreSQL running
-- Redis running
-- Environment variables configured (see application.properties)
+See [DOCKER_SETUP.md](DOCKER_SETUP.md) for details.
 
 ---
 
 ## ✅ Implemented Features
 
-### 1. User Authentication & Management
+### 1. User Authentication (Spring Boot)
 
-#### **Register User** (with OTP verification)
+**Register with OTP:**
 ```bash
-# Step 1: Register (sends OTP to email)
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john.doe@example.com",
-    "password": "SecurePass123!"
-  }'
+  -d '{"firstName":"John","lastName":"Doe","email":"john@example.com","password":"Pass123!"}'
 
-# Response: 200 OK
-# {
-#   "message": "Registration initiated. Please verify OTP sent to your email."
-# }
-
-# Step 2: Verify OTP
 curl -X POST http://localhost:8080/api/auth/verify-otp \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com",
-    "otp": "123456"
-  }'
-
-# Response: 201 Created (with JWT cookie set)
-# {
-#   "message": "User registered successfully",
-#   "user": {
-#     "id": 1,
-#     "firstName": "John",
-#     "lastName": "Doe",
-#     "email": "john.doe@example.com"
-#   }
-# }
+  -c cookies.txt \
+  -d '{"email":"john@example.com","otp":"123456"}'
 ```
 
-#### **Resend OTP**
-```bash
-curl -X POST http://localhost:8080/api/auth/resend-otp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com"
-  }'
-```
-
-#### **Login**
+**Login:**
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -c cookies.txt \
-  -d '{
-    "email": "john.doe@example.com",
-    "password": "SecurePass123!"
-  }'
+  -d '{"email":"john@example.com","password":"Pass123!"}'
 ```
 
-#### **Get Current User**
-```bash
-curl -X GET http://localhost:8080/api/auth/me \
-  -b cookies.txt
-```
-
-#### **Logout**
-```bash
-curl -X POST http://localhost:8080/api/auth/logout \
-  -b cookies.txt
-```
-
-#### **Forgot Password**
-```bash
-# Request OTP
-curl -X POST http://localhost:8080/api/auth/forgot-password \
-  -H "Content-Type: application/json" \
-  -d '{"email": "john.doe@example.com"}'
-
-# Reset with OTP
-curl -X POST http://localhost:8080/api/auth/reset-password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com",
-    "otp": "123456",
-    "newPassword": "NewSecurePass123!"
-  }'
-```
+**Features:**
+- ✅ Email OTP verification
+- ✅ JWT tokens (HttpOnly cookies)
+- ✅ Password reset flow
+- ✅ Logout endpoint
 
 ---
 
-### 2. Document Management
+### 2. Document Management (Spring Boot)
 
-#### **Create Blank Document**
+**Create Document:**
 ```bash
 curl -X POST http://localhost:8080/api/documents/create \
   -H "Content-Type: application/json" \
   -b cookies.txt \
-  -d '{"title": "My New Document"}'
+  -d '{"title":"My Document"}'
 ```
 
-#### **Upload Document (DOCX/PDF)**
+**Upload DOCX/PDF:**
 ```bash
 curl -X POST http://localhost:8080/api/documents/upload \
   -b cookies.txt \
-  -F "file=@/path/to/document.docx" \
-  -F "title=Imported Document"
+  -F "file=@document.docx" \
+  -F "title=Imported"
 ```
 
-#### **Get Document by ID**
-```bash
-curl -X GET http://localhost:8080/api/documents?document_id=1 \
-  -b cookies.txt
+**Features:**
+- ✅ Create blank HTML documents
+- ✅ Upload DOCX/PDF with content extraction
+- ✅ List user documents (paginated)
+- ✅ Document visibility (PRIVATE/SHARED/PUBLIC)
+- ✅ Soft delete
+
+---
+
+### 3. Real-Time Collaboration (Node.js Yjs Service)
+
+**WebSocket Connection (with JWT):**
+```javascript
+// 1. Login to get JWT
+const res = await fetch('http://localhost:8080/api/auth/login', {
+  method: 'POST',
+  credentials: 'include',
+  body: JSON.stringify({ email: 'user@example.com', password: 'Pass123!' })
+});
+
+// 2. Extract JWT from cookie
+const jwt = document.cookie.split('; ')
+  .find(row => row.startsWith('JWT='))
+  ?.split('=')[1];
+
+// 3. Connect to Yjs service
+const ws = new WebSocket(`ws://localhost:3000/ws/yjs/${documentId}?token=${jwt}`);
+
+ws.onopen = () => console.log('Connected with authentication!');
+ws.onmessage = (event) => {
+  // Receive Yjs CRDT updates
+  const update = new Uint8Array(event.data);
+};
 ```
 
-#### **List User Documents**
+**Yjs Service API:**
 ```bash
-curl -X GET "http://localhost:8080/api/documents?page=0&size=20" \
-  -b cookies.txt
+# Health check
+curl http://localhost:3000/health
+
+# Get active users in document
+curl http://localhost:3000/api/documents/{document-id}/users
 ```
 
-#### **Update Document Visibility**
-```bash
-curl -X PATCH http://localhost:8080/api/documents/1/visibility \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{"visibility": "PUBLIC"}'
+**Features:**
+- ✅ **JWT Authentication** - Required for all connections
+- ✅ **Yjs CRDT Sync** - Full y-protocols implementation
+- ✅ **Awareness Protocol** - User presence tracking
+- ✅ **Redis Persistence** - Auto-save every 5 minutes
+- ✅ **Active Users API** - Real-time user tracking
+- ✅ **Heartbeat Monitoring** - 30s ping/pong
+- ✅ **Graceful Shutdown** - Proper cleanup on restart
 
-# Valid: "PRIVATE", "SHARED", "PUBLIC"
+---
+
+## 🔒 Security Features
+
+### Authentication & Authorization
+- ✅ JWT tokens with HttpOnly cookies
+- ✅ WebSocket JWT authentication (query param/cookie/header)
+- ✅ Document ownership verification
+- ✅ BCrypt password hashing (10 rounds)
+- ✅ Email OTP verification
+
+### Security Headers
+- ✅ CORS configuration
+- ✅ CSRF disabled (stateless JWT)
+- ✅ Environment-based CORS origins
+
+### What's Missing
+- ❌ RBAC (Owner/Editor/Viewer roles)
+- ❌ Rate limiting
+- ❌ API key authentication
+- ❌ Document sharing permissions
+
+---
+
+## 🗄️ Database Schema
+
+### users
+```sql
+id, first_name, last_name, email, password_hash,
+created_at, provider, provider_id, account_non_locked
 ```
 
-#### **Soft Delete Document**
-```bash
-curl -X DELETE http://localhost:8080/api/documents/1 \
-  -b cookies.txt
+### documents
+```sql
+id, title, file_name, content_type, content,
+yjs_room_id, owner_id, visibility, is_deleted,
+created_at, updated_at, yjs_snapshot, file_size
+```
+
+### pending_users
+```sql
+email, first_name, last_name, password_hash, otp, created_at
+```
+
+### email_otps
+```sql
+email, otp, purpose, created_at, expires_at
 ```
 
 ---
 
-### 3. Real-Time Collaboration (WebSocket)
+## 🔧 Technology Stack
 
-⚠️ **SECURITY WARNING**: Currently has NO authentication!
+### Backend (Spring Boot)
+- Java 17
+- Spring Boot 3.5.0
+- PostgreSQL + JPA
+- Redis (Lettuce)
+- JWT (jjwt 0.12.3)
+- Mail (Gmail SMTP)
+- Apache POI, docx4j, PDFBox
 
-```javascript
-// Connect to document
-const ws = new WebSocket('ws://localhost:8080/ws/yjs/uuid-room-id');
+### Collaboration Service (Node.js)
+- Node.js 18+
+- Express.js
+- WebSocket (`ws`)
+- Yjs + y-protocols
+- Redis (ioredis)
+- JWT (jsonwebtoken)
+- Winston logging
 
-ws.onmessage = (event) => {
-  // Receive Yjs updates
-  const updateData = event.data;
-};
+### Infrastructure
+- Docker + Docker Compose
+- PostgreSQL 15
+- Redis 7
 
-// Send Yjs update
-const update = new Uint8Array([/* binary */]);
-ws.send(update);
+---
+
+## 📁 Project Structure
+
+```
+collab-docs/
+├── src/main/java/              # Spring Boot backend
+│   ├── controller/             # REST endpoints
+│   ├── service/                # Business logic
+│   ├── entities/               # JPA entities
+│   ├── repository/             # Data access
+│   ├── security/               # JWT, auth
+│   └── config/                 # Configuration
+├── yjs-service/                # Node.js microservice
+│   ├── server.js               # WebSocket server
+│   ├── config/logger.js        # Winston logging
+│   ├── utils/auth.js           # JWT validation
+│   ├── services/
+│   │   ├── yjsHandler.js       # Yjs CRDT operations
+│   │   └── redisAdapter.js     # Redis persistence
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml          # Full stack orchestration
+├── Dockerfile                  # Spring Boot container
+├── .env.example                # Environment template
+└── DOCKER_SETUP.md             # Docker guide
 ```
 
 ---
 
 ## ❌ Not Yet Implemented
 
-- RBAC (roles, permissions)
-- Document sharing (links, invitations)
-- Document versioning
-- Audit logging
-- Export APIs
+**High Priority:**
+- RBAC system (roles, permissions)
+- Document sharing (collaborators table)
 - Rate limiting
-- WebSocket authentication
-- Presence awareness
+- Audit logging
 
----
+**Medium Priority:**
+- Document versioning
+- Export APIs (PDF, DOCX)
+- Email invitations
+- Public share links
 
-## 🗄️ Database Schema
-
-### **users**
-- `id`, `first_name`, `last_name`, `email`, `password`, `created_at`
-- `provider`, `provider_id`, `account_non_locked`
-
-### **documents**
-- `id`, `title`, `file_name`, `content_type`, `content`
-- `yjs_room_id`, `owner_id`, `visibility`, `is_deleted`
-- `created_at`, `updated_at`, `yjs_snapshot`
-
-### **pending_users**
-- Temporary storage for unverified registrations
-
-### **email_otps**
-- OTP codes for registration and password reset
-
----
-
-## 🔧 Configuration
-
-Required environment variables:
-```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/collab_docs
-SPRING_DATASOURCE_USERNAME=postgres
-SPRING_DATASOURCE_PASSWORD=password
-JWT_SECRET=your-32-char-secret
-JWT_EXPIRATION_MS=86400000
-FRONTEND_URL=http://localhost:3000
-EMAIL_USERNAME=your@gmail.com
-EMAIL_PASSWORD=gmail-app-password
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=redis-password
-REDIS_DATABASE=0
-```
-
----
-
-## 🧪 Quick Testing
-
-```bash
-# Register & login
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"firstName":"Test","lastName":"User","email":"test@example.com","password":"Test123!"}'
-
-# Verify (check email/logs for OTP)
-curl -X POST http://localhost:8080/api/auth/verify-otp \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{"email":"test@example.com","otp":"123456"}'
-
-# Create document
-curl -X POST http://localhost:8080/api/documents/create \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{"title":"Test Doc"}'
-```
+**Low Priority:**
+- Anonymous document access
+- Real-time cursors
+- Comments/annotations
 
 ---
 
 ## 📊 Known Issues
 
-**Critical:**
-- ❌ WebSocket has no authentication
-- ❌ No permission system
-- ❌ No rate limiting
+**Fixed:**
+- ✅ GraalVM Yjs code removed (~800 lines)
+- ✅ WebSocket authentication implemented
+- ✅ User presence tracking working
+- ✅ Redis persistence functional
 
-**High:**
-- No audit logging
-- No versioning
-- GraalVM Yjs needs replacement
+**Current:**
+- ⚠️ No RBAC - only owner can access documents
+- ⚠️ No rate limiting on APIs
+- ⚠️ No PostgreSQL snapshot persistence (only Redis)
 
 ---
 
-## 🚀 Next: Phase 2 - Node.js Yjs Microservice
+## 🚀 Next Phase: RBAC & Permissions
 
-Phase 1 Complete! ✅
-
-Next will implement:
-- Node.js Yjs collaboration service
-- WebSocket authentication
-- Integration with Spring Boot backend
+**Phase 4 Goals:**
+1. Role-based access control (Owner, Editor, Viewer)
+2. Document collaborators table
+3. Share endpoints
+4. Permission checks in Yjs service
+5. Invitation system
 
 ---
 
@@ -311,5 +302,38 @@ Next will implement:
 
 | Date | Phase | Changes |
 |------|-------|---------|
-| 2026-02-08 | Baseline | Initial state documentation |
-| 2026-02-08 | Phase 1 | ✅ Docker setup complete (compose, Dockerfile, test script) |
+| 2026-02-08 | Phase 1 | ✅ Docker setup (compose, health checks, test script) |
+| 2026-02-08 | Phase 2 | ✅ Node.js Yjs service with JWT, Redis, awareness |
+| 2026-02-08 | Phase 3 | ✅ Removed GraalVM code, cleaned up WebSocket config |
+
+---
+
+## 🧪 Quick Test
+
+```bash
+# 1. Register
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Test","lastName":"User","email":"test@example.com","password":"Test123!"}'
+
+# 2. Get OTP from logs
+docker-compose logs backend | grep OTP
+
+# 3. Verify
+curl -X POST http://localhost:8080/api/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"email":"test@example.com","otp":"YOUR_OTP"}'
+
+# 4. Create document
+curl -X POST http://localhost:8080/api/documents/create \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"title":"Test Doc"}'
+
+# 5. Extract JWT
+JWT=$(grep -oP 'JWT=\K[^;]+' cookies.txt)
+
+# 6. Connect to Yjs (use documentId from step 4 response)
+# websocat "ws://localhost:3000/ws/yjs/{documentId}?token=$JWT"
+```
