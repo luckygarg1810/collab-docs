@@ -28,9 +28,10 @@ public class Document {
     private String fileName; // Original file name for uploaded documents
 
     @Column(name = "content_type", length = 100)
-    private String contentType; // MIME type (application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/pdf, etc.)
+    private String contentType; // MIME type
+                                // (application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+                                // application/pdf, etc.)
 
-    @Lob
     @Column(name = "content", columnDefinition = "TEXT")
     private String content; // Tiptap JSON content or HTML content
 
