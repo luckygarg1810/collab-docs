@@ -24,10 +24,11 @@ public class CustomUserDetails implements UserDetails {
 
     public CustomUserDetails(Claims claims) {
         this.user = new User();
+        user.setId(claims.get("userId", Long.class)); // Extract user ID from claims
         user.setEmail(claims.getSubject());
         user.setFirstName((String) claims.get("firstName"));
         user.setLastName((String) claims.get("lastName"));
-        // We don't have the ID or password here, which is fine for authorization
+        // We don't have the password here, which is fine for authorization
 
         String roles = (String) claims.get("roles");
         this.authorities = Arrays.stream(roles.split(","))
@@ -43,8 +44,9 @@ public class CustomUserDetails implements UserDetails {
 
         // If you have roles in your User entity, use something like:
         // return user.getRoles().stream()
-        //     .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName().toUpperCase()))
-        //     .collect(Collectors.toSet());
+        // .map(role -> new SimpleGrantedAuthority("ROLE_" +
+        // role.getName().toUpperCase()))
+        // .collect(Collectors.toSet());
     }
 
     @Override

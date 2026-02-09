@@ -21,7 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/documents")
+@RequestMapping("/api/documents")
 @RequiredArgsConstructor
 @Slf4j
 public class DocumentController {
@@ -30,7 +30,7 @@ public class DocumentController {
 
     @GetMapping
     public ResponseEntity<?> getDocument(@RequestParam(value = "document_id") Long documentId,
-                                                Authentication authentication) {
+            Authentication authentication) {
         try {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
@@ -38,23 +38,22 @@ public class DocumentController {
             Document document = documentService.getDocumentById(documentId, user);
             DocumentResponse response = documentService.mapToDocumentResponse(document);
             // Log access for audit trail
-            //auditService.logDocumentAccess(user.getId(), documentId, "VIEW");
+            // auditService.logDocumentAccess(user.getId(), documentId, "VIEW");
 
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).
-                    body(new MessageResponse("Error: " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Error: " + e.getMessage()));
         } catch (Exception e) {
             log.error("Error retrieving document: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).
-                    body(new MessageResponse("Error: Failed to retrieve document!"));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error: Failed to retrieve document!"));
         }
     }
 
     @GetMapping("/user/documents")
     public ResponseEntity<?> getUserDocuments(@RequestParam(defaultValue = "0") int page,
-                                              @RequestParam(defaultValue = "20") int size,
-                                              Authentication authentication) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
         try {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
@@ -76,16 +75,16 @@ public class DocumentController {
             Authentication authentication) {
         try {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            User user = userDetails.getUser();
+            Long userId = userDetails.getId(); // Use getId() method from CustomUserDetails
 
             String title = request.getTitle();
             if (title == null || title.trim().isEmpty()) {
                 title = "Untitled Document";
             }
 
-            Document document = documentService.createBlankDocument(title.trim(), user);
+            Document document = documentService.createBlankDocument(title.trim(), userId);
             DocumentResponse response = documentService.mapToDocumentResponse(document);
-            log.info("Created blank document '{}' for user: {}", title, user.getEmail());
+            log.info("Created blank document '{}' for user ID: {}", title, userId);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (Exception e) {

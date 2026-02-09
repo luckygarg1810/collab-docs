@@ -4,6 +4,7 @@ import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.enums.Visibility;
 import com.project.collab_docs.repository.DocumentRepository;
+import com.project.collab_docs.repository.UserRepository;
 import com.project.collab_docs.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,11 +34,16 @@ import java.util.UUID;
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
+    private final UserRepository userRepository;
     // Default blank HTML content for new documents
     private static final String BLANK_HTML_CONTENT = "<div><p><br></p></div>";
 
     @Transactional
-    public Document createBlankDocument(String title, User owner) {
+    public Document createBlankDocument(String title, Long userId) {
+        // Fetch user from database to get managed entity
+        User owner = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
         // Generate unique Yjs room ID
         String yjsRoomId = generateUniqueYjsRoomId();
 
