@@ -174,10 +174,10 @@ public class DocumentController {
     @PostMapping("/yjs-snapshot")
     public ResponseEntity<?> saveYjsSnapshot(
             @RequestParam("yjsRoomId") String yjsRoomId,
-            @RequestParam("snapshot") byte[] snapshot) {
+            @RequestBody byte[] snapshot) {
         try {
             documentService.saveYjsSnapshot(yjsRoomId, snapshot);
-            log.info("Saved Yjs snapshot for room: {}", yjsRoomId);
+            log.info("Saved Yjs snapshot for room: {} (size: {} bytes)", yjsRoomId, snapshot.length);
             return ResponseEntity.ok(new MessageResponse("Yjs snapshot saved successfully!"));
 
         } catch (Exception e) {
@@ -191,7 +191,21 @@ public class DocumentController {
     public ResponseEntity<?> getYjsSnapshot(@PathVariable String yjsRoomId) {
         try {
             byte[] snapshot = documentService.getYjsSnapshot(yjsRoomId);
-            return ResponseEntity.ok(snapshot);
+
+            // Return 204 No Content if snapshot is empty
+            if (snapshot == null || snapshot.length == 0) {
+                log.info("No snapshot found for room: {}", yjsRoomId);
+                return ResponseEntity.noContent().build();
+            }
+
+            log.info("Retrieved Yjs snapshot for room: {} (size: {} bytes)", yjsRoomId, snapshot.length);
+            return ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                    .body(snapshot);
+        } catch (IllegalArgumentException e) {
+            log.warn("Yjs snapshot retrieval failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new MessageResponse("Error: " + e.getMessage()));
         } catch (Exception e) {
             log.error("Error retrieving Yjs snapshot: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

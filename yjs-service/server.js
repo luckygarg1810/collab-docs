@@ -128,6 +128,10 @@ wss.on('connection', async (ws, request) => {
     ws.userInfo = userInfo;
     ws.isAlive = true;
 
+    // CRITICAL: Track Yjs client ID for awareness cleanup
+    // Each Y.Doc has a unique clientID that awareness protocol uses
+    ws.yjsClientID = ydoc.clientID;
+
     // Send initial sync message (Step 1: send state vector)
     try {
         const stateVector = await getStateVector(documentId);
@@ -194,13 +198,17 @@ wss.on('connection', async (ws, request) => {
         // Remove from active users
         await removeActiveUser(documentId, userInfo.userId);
 
-        // Remove from awareness
-        if (awareness) {
+        // Remove from awareness (using the tracked Yjs client ID)
+        if (awareness && ws.yjsClientID !== undefined) {
             awarenessProtocol.removeAwarenessStates(
                 awareness,
-                [ws.clientID],
+                [ws.yjsClientID], // ✅ Now using the correct Yjs client ID
                 null
             );
+            logger.debug('Removed awareness state for client', {
+                documentId,
+                yjsClientID: ws.yjsClientID
+            });
         }
     });
 

@@ -64,9 +64,13 @@ function authenticateConnection(request) {
     }
 
     // Extract user info from JWT payload
+    // IMPORTANT: Spring Boot JWT structure:
+    // - "sub": email (subject)
+    // - "userId": numeric user ID
+    // - "firstName", "lastName": user names
     const userInfo = {
-        userId: decoded.sub || decoded.userId || decoded.id,
-        email: decoded.email,
+        userId: decoded.userId || decoded.id || decoded.sub,  // ✅ Check userId FIRST (not sub which is email)
+        email: decoded.email || decoded.sub,                   // ✅ Email from explicit claim or subject
         name: decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim(),
     };
 

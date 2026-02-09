@@ -127,6 +127,9 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
+      # Backend API URL for PostgreSQL persistence
+      BACKEND_URL: http://backend:8080
+
       # Redis (must connect to same Redis as backend)
       REDIS_HOST: redis
       REDIS_PORT: 6379

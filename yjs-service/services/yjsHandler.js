@@ -2,6 +2,7 @@ const Y = require('yjs');
 const { encoding, decoding, awarenessProtocol } = require('lib0');
 const logger = require('../config/logger');
 const { saveDocumentState, loadDocumentState } = require('./redisAdapter');
+const { saveSnapshotToPostgres, loadSnapshotFromPostgres } = require('./postgresAdapter');
 
 // In-memory storage for active Yjs documents
 const documents = new Map();
@@ -25,15 +26,30 @@ async function getDocument(documentId) {
     // Create new Y.Doc
     const ydoc = new Y.Doc();
 
-    // Try to load persisted state from Redis
-    const persistedState = await loadDocumentState(documentId);
+    // Try to load persisted state - PostgreSQL first, then Redis
+    let persistedState = null;
+    let source = null;
+
+    // 1. Try PostgreSQL (permanent storage)
+    persistedState = await loadSnapshotFromPostgres(documentId);
+    if (persistedState) {
+        source = 'PostgreSQL';
+    } else {
+        // 2. Fallback to Redis (cache)
+        persistedState = await loadDocumentState(documentId);
+        if (persistedState) {
+            source = 'Redis';
+        }
+    }
+
     if (persistedState) {
         try {
             Y.applyUpdate(ydoc, persistedState);
-            logger.info('Document loaded from Redis', { documentId });
+            logger.info('Document loaded', { documentId, source });
         } catch (error) {
             logger.error('Failed to apply persisted state', {
                 documentId,
+                source,
                 error: error.message
             });
         }
@@ -51,7 +67,7 @@ async function getDocument(documentId) {
 }
 
 /**
- * Setup automatic document save to Redis
+ * Setup automatic document save to both Redis and PostgreSQL
  * @param {string} documentId - Document identifier
  * @param {Y.Doc} ydoc - Yjs document
  */
@@ -59,8 +75,14 @@ function setupAutoSave(documentId, ydoc) {
     const saveInterval = setInterval(async () => {
         try {
             const state = Y.encodeStateAsUpdate(ydoc);
-            await saveDocumentState(documentId, state);
-            logger.debug('Document auto-saved', { documentId });
+
+            // Save to both Redis (fast cache) and PostgreSQL (permanent)
+            await Promise.all([
+                saveDocumentState(documentId, state),
+                saveSnapshotToPostgres(documentId, state)
+            ]);
+
+            logger.debug('Document auto-saved to Redis and PostgreSQL', { documentId });
         } catch (error) {
             logger.error('Auto-save failed', { documentId, error: error.message });
         }
@@ -142,7 +164,7 @@ async function getStateAsUpdate(documentId, stateVector) {
 }
 
 /**
- * Save document state immediately
+ * Save document state immediately to both Redis and PostgreSQL
  * @param {string} documentId - Document identifier
  */
 async function saveDocument(documentId) {
@@ -154,9 +176,24 @@ async function saveDocument(documentId) {
 
     try {
         const state = Y.encodeStateAsUpdate(ydoc);
-        await saveDocumentState(documentId, state);
-        logger.info('Document saved manually', { documentId });
-        return true;
+
+        // Save to both Redis and PostgreSQL
+        const [redisResult, postgresResult] = await Promise.allSettled([
+            saveDocumentState(documentId, state),
+            saveSnapshotToPostgres(documentId, state)
+        ]);
+
+        const redisSuccess = redisResult.status === 'fulfilled' && redisResult.value;
+        const postgresSuccess = postgresResult.status === 'fulfilled' && postgresResult.value;
+
+        logger.info('Document saved manually', {
+            documentId,
+            redis: redisSuccess ? 'success' : 'failed',
+            postgres: postgresSuccess ? 'success' : 'failed'
+        });
+
+        // Success if at least one save succeeded
+        return redisSuccess || postgresSuccess;
     } catch (error) {
         logger.error('Manual save failed', { documentId, error: error.message });
         return false;
