@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
         "name": "Collab-Docs API (Complete)",
-        "description": "Complete API collection for Collab-Docs application with all endpoints",
+        "description": "Complete API collection for Collab-Docs application. Includes Spring Boot backend (port 8080) and Node.js Yjs Service (port 3000) endpoints. Real-time collaboration via WebSocket: ws://localhost:3000/ws/yjs/{yjsRoomId}?token={jwt}",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -448,26 +448,26 @@
                     "name": "Save Yjs Snapshot",
                     "request": {
                         "method": "POST",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/octet-stream",
+                                "description": "Binary Yjs snapshot data"
+                            }
+                        ],
                         "body": {
-                            "mode": "formdata",
-                            "formdata": [
-                                {
-                                    "key": "yjsRoomId",
-                                    "value": "doc_abc123def456",
-                                    "type": "text",
-                                    "description": "Yjs room ID"
-                                },
-                                {
-                                    "key": "snapshot",
-                                    "type": "file",
-                                    "src": [],
-                                    "description": "Binary snapshot data"
+                            "mode": "file",
+                            "file": {
+                                "src": ""
+                            },
+                            "options": {
+                                "raw": {
+                                    "language": "text"
                                 }
-                            ]
+                            }
                         },
                         "url": {
-                            "raw": "{{baseUrl}}/api/documents/yjs-snapshot",
+                            "raw": "{{baseUrl}}/api/documents/yjs-snapshot?yjsRoomId=doc_abc123def456",
                             "host": [
                                 "{{baseUrl}}"
                             ],
@@ -475,9 +475,16 @@
                                 "api",
                                 "documents",
                                 "yjs-snapshot"
+                            ],
+                            "query": [
+                                {
+                                    "key": "yjsRoomId",
+                                    "value": "doc_abc123def456",
+                                    "description": "Yjs room ID from document"
+                                }
                             ]
                         },
-                        "description": "Save Yjs CRDT snapshot. Internal service call from Yjs microservice."
+                        "description": "Save Yjs CRDT snapshot to PostgreSQL. Internal service call from Node.js yjs-service. Accepts binary snapshot data (byte array) with Content-Type: application/octet-stream."
                     },
                     "response": []
                 },
@@ -498,7 +505,7 @@
                                 "doc_abc123def456"
                             ]
                         },
-                        "description": "Get Yjs CRDT snapshot. Internal service call from Yjs microservice."
+                        "description": "Get Yjs CRDT snapshot from PostgreSQL. Internal service call from Node.js yjs-service. Returns binary data with Content-Type: application/octet-stream (200 OK) or 204 No Content for new documents without snapshots."
                     },
                     "response": []
                 }
@@ -506,7 +513,52 @@
             "description": "Document management endpoints"
         },
         {
-            "name": "Health Check",
+            "name": "Yjs Service (Node.js)",
+            "item": [
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{yjsServiceUrl}}/health",
+                            "host": [
+                                "{{yjsServiceUrl}}"
+                            ],
+                            "path": [
+                                "health"
+                            ]
+                        },
+                        "description": "Check Yjs collaboration service health and get stats (active documents, connections)"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Active Users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{yjsServiceUrl}}/api/documents/doc_abc123/users",
+                            "host": [
+                                "{{yjsServiceUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "doc_abc123",
+                                "users"
+                            ]
+                        },
+                        "description": "Get list of currently active users in a document room"
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Node.js Yjs collaboration service endpoints (port 3000). For WebSocket connection: ws://localhost:3000/ws/yjs/{yjsRoomId}?token={jwt}"
+        },
+        {
+            "name": "Backend Health Check",
             "request": {
                 "method": "GET",
                 "header": [],
@@ -520,7 +572,7 @@
                         "health"
                     ]
                 },
-                "description": "Check application health status"
+                "description": "Check Spring Boot backend health status"
             },
             "response": []
         }
@@ -549,7 +601,14 @@
         {
             "key": "baseUrl",
             "value": "http://localhost:8080",
-            "type": "string"
+            "type": "string",
+            "description": "Spring Boot backend base URL"
+        },
+        {
+            "key": "yjsServiceUrl",
+            "value": "http://localhost:3000",
+            "type": "string",
+            "description": "Node.js Yjs collaboration service base URL"
         }
     ]
 }

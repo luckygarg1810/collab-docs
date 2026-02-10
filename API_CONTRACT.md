@@ -557,24 +557,35 @@ curl -X DELETE http://localhost:8080/api/documents/1 \
 ### 7. Save Yjs Snapshot (Internal)
 
 **Endpoint:** `POST /api/documents/yjs-snapshot`  
-**Description:** Save Yjs CRDT snapshot to database. Called by Yjs microservice.  
-**Authentication:** None (internal service call)
+**Description:** Save Yjs CRDT snapshot to database. Called by Node.js yjs-service.  
+**Authentication:** None (internal service-to-service call)  
+**Content-Type:** `application/octet-stream`
 
-**Request Parameters:**
-- `yjsRoomId` (required): String - Yjs room ID
-- `snapshot` (required): byte[] - Yjs snapshot binary data
+**Query Parameters:**
+- `yjsRoomId` (required): String - Yjs room ID from document
+
+**Request Body:**
+- Binary Yjs snapshot data (byte array)
 
 **cURL Example:**
 ```bash
-curl -X POST "http://localhost:8080/api/documents/yjs-snapshot" \
-  -F "yjsRoomId=doc_abc123" \
-  -F "snapshot=@snapshot.bin"
+# Save binary snapshot to PostgreSQL
+curl -X POST "http://localhost:8080/api/documents/yjs-snapshot?yjsRoomId=doc_abc123" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "@snapshot.bin"
 ```
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Snapshot saved successfully"
+  "message": "Yjs snapshot saved successfully!"
+}
+```
+
+**Error Response (500 Internal Server Error):**
+```json
+{
+  "message": "Error: Failed to save Yjs snapshot!"
 }
 ```
 
@@ -583,21 +594,40 @@ curl -X POST "http://localhost:8080/api/documents/yjs-snapshot" \
 ### 8. Get Yjs Snapshot (Internal)
 
 **Endpoint:** `GET /api/documents/yjs-snapshot/{yjsRoomId}`  
-**Description:** Get Yjs CRDT snapshot from database. Called by Yjs microservice.  
-**Authentication:** None (internal service call)
+**Description:** Get Yjs CRDT snapshot from database. Called by Node.js yjs-service for document recovery.  
+**Authentication:** None (internal service-to-service call)
 
 **Path Parameters:**
-- `yjsRoomId` (required): String - Yjs room ID
+- `yjsRoomId` (required): String - Yjs room ID from document
 
 **cURL Example:**
 ```bash
+# Retrieve binary snapshot from PostgreSQL
 curl -X GET http://localhost:8080/api/documents/yjs-snapshot/doc_abc123 \
-  --output snapshot.bin
+  -o snapshot.bin
 ```
 
 **Success Response (200 OK):**
 - **Content-Type:** `application/octet-stream`
-- **Body:** Binary Yjs snapshot data
+- **Body:** Binary Yjs snapshot data (Uint8Array)
+
+**Empty Snapshot Response (204 No Content):**
+- Returned when document exists but has no snapshot yet (new document)
+- Empty body
+
+**Error Response (404 Not Found):**
+```json
+{
+  "message": "Error: Document not found or has been deleted for room ID: doc_abc123"
+}
+```
+
+**Error Response (500 Internal Server Error):**
+```json
+{
+  "message": "Error: Failed to retrieve snapshot!"
+}
+```
 
 ---
 
@@ -778,6 +808,272 @@ otp.block.minutes=30
 ```
 
 See `.env.example` for Docker environment variables.
+
+---
+
+## Real-Time Collaboration (WebSocket)
+
+The Node.js Yjs service provides real-time collaborative editing via WebSocket using the Yjs CRDT protocol.
+
+### WebSocket Connection
+
+**Endpoint:** `ws://localhost:3000/ws/yjs/{yjsRoomId}`  
+**Protocol:** Yjs sync protocol (y-protocols)  
+**Authentication:** JWT token (required)
+
+### Connection Parameters
+
+**Path Parameter:**
+- `{yjsRoomId}`: The Yjs room ID from the document (e.g., `doc_1234567890_abc123`)
+
+**Query Parameter (Required):**
+- `token`: JWT token from Spring Boot authentication
+
+**Alternative: Authorization Header:**
+```
+Authorization: Bearer {jwt-token}
+```
+
+### JWT Token Claims
+
+When connecting to WebSocket, the JWT token must contain:
+
+```json
+{
+  "iss": "collab_docs",
+  "sub": "user@example.com",
+  "userId": 123,
+  "firstName": "John",
+  "lastName": "Doe",
+  "roles": "ROLE_USER",
+  "iat": 1234567890,
+  "exp": 1234571490
+}
+```
+
+> **Important:** The `userId` claim is used for user tracking. The `sub` claim contains the email address.
+
+### Connection Flow
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant Y as Yjs Service
+    participant S as Spring Boot
+    participant P as PostgreSQL
+    
+    F->>Y: WebSocket Connect (ws://yjs-service/ws/yjs/{roomId}?token={jwt})
+    Y->>Y: Verify JWT token
+    Y->>S: GET /yjs-snapshot/{roomId}
+    S->>P: Query snapshot by yjsRoomId
+    P-->>S: Return binary snapshot
+    S-->>Y: Binary Yjs data
+    Y->>Y: Apply snapshot to Y.Doc
+    Y->>F: MESSAGE_SYNC_STEP1 (initial state)
+    F->>F: Yjs document ready
+    
+    loop Real-time Editing
+        F->>Y: User edit (MESSAGE_SYNC_UPDATE)
+        Y->>Y: Apply CRDT update
+        Y->>F: Broadcast to other clients
+    end
+    
+    loop Auto-save (every 5 minutes)
+        Y->>S: POST /yjs-snapshot (binary data)
+        S->>P: UPDATE documents SET yjs_snapshot
+    end
+```
+
+### JavaScript Example (Vanilla WebSocket)
+
+```javascript
+// Get JWT token from cookie
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+const jwtToken = getCookie('jwt');
+const yjsRoomId = 'doc_1234567890_abc123'; // From document response
+
+// Connect to Yjs service
+const ws = new WebSocket(
+    `ws://localhost:3000/ws/yjs/${yjsRoomId}?token=${jwtToken}`
+);
+
+ws.onopen = () => {
+    console.log('Connected to Yjs collaboration service');
+};
+
+ws.onmessage = (event) => {
+    // Yjs protocol handles binary messages
+    // Use Yjs library to process updates
+};
+
+ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+};
+```
+
+### Tiptap + Yjs Integration (Recommended)
+
+For rich text editing with real-time collaboration:
+
+```javascript
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+
+// 1. Create Yjs document
+const ydoc = new Y.Doc();
+
+// 2. Connect to Yjs service
+const provider = new WebsocketProvider(
+    'ws://localhost:3000/ws/yjs',  // Base URL
+    yjsRoomId,                       // Document room ID
+    ydoc,
+    {
+        params: {
+            token: jwtToken             // JWT authentication
+        }
+    }
+);
+
+// 3. Create Tiptap editor with collaboration
+const editor = new Editor({
+    element: document.querySelector('#editor'),
+    extensions: [
+        StarterKit.configure({
+            history: false,  // Yjs handles history
+        }),
+        Collaboration.configure({
+            document: ydoc,
+        }),
+        CollaborationCursor.configure({
+            provider: provider,
+            user: {
+                name: 'John Doe',
+                color: '#ff0000',
+            },
+        }),
+    ],
+    content: '<p>Start collaborating!</p>',
+});
+
+// 4. Monitor connection status
+provider.on('status', event => {
+    console.log('Connection status:', event.status); // connecting, connected, disconnected
+});
+
+// 5. Cleanup on unmount
+function cleanup() {
+    provider.destroy();
+    editor.destroy();
+}
+```
+
+### Persistence Architecture
+
+**Dual-Layer Persistence:**
+
+1. **Redis (Cache Layer)**
+   - Fast in-memory storage
+   - 24-hour TTL
+   - Handles active sessions
+
+2. **PostgreSQL (Permanent Storage)**
+   - Durable storage in `documents.yjs_snapshot` field
+   - Auto-save every 5 minutes
+   - Final save on user disconnect
+
+**Document Loading Priority:**
+1. Try PostgreSQL first (permanent)
+2. Fallback to Redis (cache)
+3. Create new document if neither exists
+
+### Active Users Tracking
+
+**Endpoint:** `GET /api/documents/{documentId}/users`  
+**Description:** Get list of currently active users in a document.
+
+```bash
+curl -X GET "http://localhost:3000/api/documents/doc_1234567890_abc123/users"
+```
+
+**Response:**
+```json
+{
+  "users": [
+    {
+      "userId": "123",
+      "name": "John Doe",
+      "email": "john@example.com"
+    }
+  ],
+  "count": 1
+}
+```
+
+### Health Check
+
+**Endpoint:** `GET /health`  
+**Base URL:** `http://localhost:3000`
+
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+```json
+{
+  "status": "UP",
+  "service": "yjs-collaboration",
+  "timestamp": "2026-02-09T18:00:00.000Z",
+  "stats": {
+    "activeDocuments": 5,
+    "totalConnections": 12
+  }
+}
+```
+
+### Error Scenarios
+
+**401 Unauthorized:**
+- Invalid or missing JWT token
+- WebSocket connection rejected
+- Response: `HTTP/1.1 401 Unauthorized`
+
+**400 Bad Request:**
+- Invalid WebSocket path
+- Expected format: `/ws/yjs/{yjsRoomId}`
+- Response: `HTTP/1.1 400 Bad Request`
+
+### Performance Characteristics
+
+- **Auto-save interval:** 5 minutes
+- **Heartbeat (ping/pong):** Every 30 seconds
+- **Max connections per instance:** ~1,000 concurrent
+- **Max active documents:** ~100 simultaneously
+- **Snapshot size limit:** 50MB per document
+
+### Docker Configuration
+
+```yaml
+services:
+  yjs-service:
+    image: collab-docs-yjs-service
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8080
+      JWT_SECRET: ${JWT_SECRET}  # Must match Spring Boot
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+```
 
 ---
 
