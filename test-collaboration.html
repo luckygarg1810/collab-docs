@@ -326,12 +326,42 @@
                 const newContent = editorEl.textContent;
                 const oldContent = ytext.toString();
 
-                if (newContent !== oldContent) {
-                    ydoc.transact(() => {
-                        ytext.delete(0, ytext.length);
-                        ytext.insert(0, newContent);
-                    });
+                if (newContent === oldContent) {
+                    return;
                 }
+
+                ydoc.transact(() => {
+                    let start = 0;
+                    let end = 0;
+
+                    // Calculate common prefix
+                    while (
+                        start < newContent.length &&
+                        start < oldContent.length &&
+                        newContent[start] === oldContent[start]
+                    ) {
+                        start++;
+                    }
+
+                    // Calculate common suffix
+                    while (
+                        end < newContent.length - start &&
+                        end < oldContent.length - start &&
+                        newContent[newContent.length - end - 1] === oldContent[oldContent.length - end - 1]
+                    ) {
+                        end++;
+                    }
+
+                    // Content to delete
+                    if (start + end < oldContent.length) {
+                        ytext.delete(start, oldContent.length - start - end);
+                    }
+
+                    // Content to insert
+                    if (start + end < newContent.length) {
+                        ytext.insert(start, newContent.slice(start, newContent.length - end));
+                    }
+                });
             });
         }
 
