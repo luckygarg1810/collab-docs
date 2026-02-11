@@ -11,7 +11,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 function verifyToken(token) {
     try {
         console.log('🔑 [DEBUG] Verifying with secret:', JWT_SECRET.substring(0, 10) + '... (length: ' + JWT_SECRET.length + ')');
-        const decoded = jwt.verify(token, JWT_SECRET);
+        // Fix: Java backend signs with Base64 decoded secret, so we must decode it here too
+        const secretBuffer = Buffer.from(JWT_SECRET, 'base64');
+        const decoded = jwt.verify(token, secretBuffer);
         return decoded;
     } catch (error) {
         logger.warn('JWT verification failed', { error: error.message });

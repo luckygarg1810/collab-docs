@@ -1,5 +1,6 @@
 const Y = require('yjs');
-const { encoding, decoding, awarenessProtocol } = require('lib0');
+const { encoding, decoding } = require('lib0');
+const awarenessProtocol = require('y-protocols/awareness');
 const logger = require('../config/logger');
 const { saveDocumentState, loadDocumentState } = require('./redisAdapter');
 const { saveSnapshotToPostgres, loadSnapshotFromPostgres } = require('./postgresAdapter');

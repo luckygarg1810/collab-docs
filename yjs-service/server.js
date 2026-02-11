@@ -3,7 +3,8 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const Y = require('yjs');
-const { encoding, decoding, awarenessProtocol } = require('lib0');
+const { encoding, decoding } = require('lib0');
+const awarenessProtocol = require('y-protocols/awareness');
 const logger = require('./config/logger');
 const { authenticateConnection } = require('./utils/auth');
 const {
