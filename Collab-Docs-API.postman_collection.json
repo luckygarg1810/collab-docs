@@ -513,6 +513,116 @@
             "description": "Document management endpoints"
         },
         {
+            "name": "Collaborators",
+            "item": [
+                {
+                    "name": "Add Collaborator",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": 2,\n  \"role\": \"EDITOR\",\n  \"expiresInDays\": 30\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/collaborators",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "collaborators"
+                            ]
+                        },
+                        "description": "Grant access to a document for another user. Only OWNER can add collaborators. Role can be OWNER, EDITOR, or VIEWER. expiresInDays is optional (null = permanent access)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Collaborators",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/collaborators",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "collaborators"
+                            ]
+                        },
+                        "description": "Get all collaborators for a document. Any user with access can view the list. Returns array of collaborators with user details, roles, and timestamps."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Collaborator Role",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"role\": \"VIEWER\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/collaborators/2",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "collaborators",
+                                "2"
+                            ]
+                        },
+                        "description": "Update a collaborator's role. Only OWNER can update roles. Cannot demote the last OWNER."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove Collaborator",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/collaborators/2",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "collaborators",
+                                "2"
+                            ]
+                        },
+                        "description": "Revoke a user's access to a document. Only OWNER can remove collaborators. Cannot remove the last OWNER."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Collaborator management with RBAC (OWNER/EDITOR/VIEWER permissions)"
+        },
+        {
             "name": "Yjs Service (Node.js)",
             "item": [
                 {

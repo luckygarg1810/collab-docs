@@ -10,10 +10,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
  */
 function verifyToken(token) {
     try {
+        console.log('🔑 [DEBUG] Verifying with secret:', JWT_SECRET.substring(0, 10) + '... (length: ' + JWT_SECRET.length + ')');
         const decoded = jwt.verify(token, JWT_SECRET);
         return decoded;
     } catch (error) {
         logger.warn('JWT verification failed', { error: error.message });
+        console.log('❌ [DEBUG] Verification error:', error.message);
         return null;
     }
 }
@@ -52,12 +54,23 @@ function extractToken(request) {
 function authenticateConnection(request) {
     const token = extractToken(request);
 
+    console.log('🔍 [DEBUG] Authentication attempt:', {
+        hasToken: !!token,
+        tokenPreview: token ? token.substring(0, 20) + '...' : null,
+        secret: process.env.JWT_SECRET ? 'SET' : 'NOT SET'
+    });
+
     if (!token) {
         logger.warn('No token provided in WebSocket connection');
         return null;
     }
 
     const decoded = verifyToken(token);
+
+    console.log('🔍 [DEBUG] Token verification:', {
+        valid: !!decoded,
+        decoded: decoded
+    });
 
     if (!decoded) {
         return null;

@@ -1,7 +1,7 @@
 # Collab-Docs - Current Implementation State
 
-**Last Updated:** 2026-02-09  
-**Version:** Phase 4 Complete - Full Yjs Persistence with PostgreSQL
+**Last Updated:** 2026-02-10  
+**Version:** Phase 4+ Complete - RBAC & Collaboration
 
 ---
 
@@ -169,7 +169,37 @@ curl -X GET "http://localhost:8080/api/documents/yjs-snapshot/doc_abc123" \
 
 ---
 
-### 4. Real-Time Collaboration (Node.js Yjs Service)
+### 4. Collaborator Management & RBAC (Spring Boot)
+
+**Permission Levels:**
+- **OWNER**: Full control (edit, delete, share, manage permissions)
+- **EDITOR**: Can edit document content
+- **VIEWER**: Read-only access
+
+**Add Collaborator:**
+```bash
+curl -X POST http://localhost:8080/api/documents/1/collaborators \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"userId":2,"role":"EDITOR","expiresInDays":30}'
+```
+
+**List Collaborators:**
+```bash
+curl -X GET http://localhost:8080/api/documents/1/collaborators -b cookies.txt
+```
+
+**Features:**
+- ✅ Three-tier permission model (OWNER/EDITOR/VIEWER)
+- ✅ Auto-grant OWNER on document creation
+- ✅ Permission checks on all document operations
+- ✅ Prevent removing last owner
+- ✅ Optional time-based expiration
+- ✅ Shared documents in user's list
+
+---
+
+### 5. Real-Time Collaboration (Node.js Yjs Service)
 
 **WebSocket Connection (with JWT):**
 ```javascript
@@ -425,7 +455,6 @@ collab-docs/
 - ✅ PostgreSQL persistence (dual-layer architecture implemented)
 
 **Current Limitations:**
-- ⚠️ No RBAC - only owner can access documents
 - ⚠️ No rate limiting on APIs or WebSocket
 - ⚠️ Single yjs-service instance (no horizontal scaling yet)
 - ⚠️ No document unloading (memory grows unbounded)

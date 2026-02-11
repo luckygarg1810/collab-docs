@@ -36,3 +36,4 @@ build/
 /yjs-service/logs
 
 .env
+node_modules/*

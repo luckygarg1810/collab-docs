@@ -2,7 +2,10 @@ package com.project.collab_docs.service;
 
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
+import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.enums.Visibility;
+import com.project.collab_docs.exception.PermissionDeniedException;
+import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.repository.UserRepository;
 import com.project.collab_docs.response.DocumentResponse;
@@ -35,6 +38,8 @@ public class DocumentService {
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
+    private final PermissionService permissionService;
+
     // Default blank HTML content for new documents
     private static final String BLANK_HTML_CONTENT = "<div><p><br></p></div>";
 
@@ -42,7 +47,7 @@ public class DocumentService {
     public Document createBlankDocument(String title, Long userId) {
         // Fetch user from database to get managed entity
         User owner = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Generate unique Yjs room ID
         String yjsRoomId = generateUniqueYjsRoomId();
@@ -60,7 +65,16 @@ public class DocumentService {
                 .build();
 
         Document savedDocument = documentRepository.save(document);
-        log.info("Created blank document with ID: {} for user: {}", savedDocument.getId(), owner.getEmail());
+
+        // AUTO-GRANT OWNER PERMISSION
+        permissionService.grantPermission(
+                savedDocument.getId(),
+                owner.getId(),
+                Role.OWNER,
+                owner.getId());
+
+        log.info("Created blank document with ID: {} for user: {} with OWNER permission",
+                savedDocument.getId(), owner.getEmail());
 
         return savedDocument;
     }
@@ -68,32 +82,20 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public Document getDocumentById(Long documentId, User requestingUser) {
         Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)
-                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
 
-        if (!hasDocumentAccess(document, requestingUser)) {
-            throw new IllegalArgumentException("Access denied. You don't have permission to view this document");
+        // Check VIEWER permission using RBAC
+        if (!permissionService.hasPermission(documentId, requestingUser.getId(), Role.VIEWER)) {
+            throw new PermissionDeniedException("Access denied. You don't have permission to view this document");
         }
+
         if (document.getContent() != null) {
             document.getContent().length(); // Force lazy loading
         }
-        log.info("Document {} accessed by user: {}", documentId, requestingUser.getEmail());
+        log.info("Document {} accessed by user: {} with role: {}",
+                documentId, requestingUser.getEmail(),
+                permissionService.getEffectiveRole(documentId, requestingUser.getId()));
         return document;
-    }
-
-    private boolean hasDocumentAccess(Document document, User requestingUser) {
-        if (document.getOwner().getId().equals(requestingUser.getId())) {
-            return true;
-        }
-
-        return switch (document.getVisibility()) {
-            case PUBLIC -> true;
-            case SHARED ->
-                // TODO: Implement shared document logic
-                // This might involve checking a separate permissions table
-                // For now, treating shared as accessible (modify as needed)
-                true;
-            default -> false;
-        };
     }
 
     @Transactional(readOnly = true)
@@ -106,14 +108,32 @@ public class DocumentService {
             if (size <= 0 || size > 100) {
                 throw new IllegalArgumentException("Page size must be between 1 and 100");
             }
-            Pageable pageable = PageRequest.of(page, size);
 
-            // Fetch user's documents (non-deleted only)
-            Page<Document> documentsPage = documentRepository.findByOwnerAndIsDeletedFalse(user, pageable);
-            // Convert to DocumentResponse objects
-            Page<DocumentResponse> documentResponsePage = documentsPage.map(this::mapToDocumentResponse);
-            log.info("Retrieved {} documents for user: {} (page: {}, size: {})",
-                    documentsPage.getTotalElements(), user.getEmail(), page, size);
+            // Get all documents user can access (owned + shared via RBAC)
+            var accessibleDocuments = permissionService.getUserAccessibleDocuments(user.getId());
+
+            // Manual pagination since we're working with a List
+            int start = page * size;
+            int end = Math.min(start + size, accessibleDocuments.size());
+
+            var paginatedDocs = accessibleDocuments.subList(
+                    Math.min(start, accessibleDocuments.size()),
+                    end);
+
+            // Convert to DocumentResponse
+            var documentResponses = paginatedDocs.stream()
+                    .map(this::mapToDocumentResponse)
+                    .toList();
+
+            // Create Page object
+            Pageable pageable = PageRequest.of(page, size);
+            long total = accessibleDocuments.size();
+
+            Page<DocumentResponse> documentResponsePage = new org.springframework.data.domain.PageImpl<>(
+                    documentResponses, pageable, total);
+
+            log.info("Retrieved {} accessible documents for user: {} (page: {}, size: {})",
+                    total, user.getEmail(), page, size);
 
             return documentResponsePage;
 
@@ -156,7 +176,16 @@ public class DocumentService {
                 .build();
 
         Document savedDocument = documentRepository.save(document);
-        log.info("Uploaded document with ID: {} for user: {}", savedDocument.getId(), owner.getEmail());
+
+        // AUTO-GRANT OWNER PERMISSION
+        permissionService.grantPermission(
+                savedDocument.getId(),
+                owner.getId(),
+                Role.OWNER,
+                owner.getId());
+
+        log.info("Uploaded document with ID: {} for user: {} with OWNER permission",
+                savedDocument.getId(), owner.getEmail());
 
         return savedDocument;
     }
@@ -403,10 +432,11 @@ public class DocumentService {
     @Transactional
     public void updateDocumentVisibility(Long documentId, Visibility visibility, User owner) {
         Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)
-                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
 
-        if (!document.getOwner().getId().equals(owner.getId())) {
-            throw new IllegalArgumentException("Only the document owner can change visibility");
+        // Check OWNER permission using RBAC
+        if (!permissionService.hasPermission(documentId, owner.getId(), Role.OWNER)) {
+            throw new PermissionDeniedException("Only the document owner can change visibility");
         }
 
         if (!isValidVisibility(visibility)) {
@@ -426,11 +456,11 @@ public class DocumentService {
     @Transactional
     public void softDeleteDocument(Long documentId, User user) {
         Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)
-                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
 
-        // Check if user is the owner of the document
-        if (!document.getOwner().getId().equals(user.getId())) {
-            throw new IllegalArgumentException("Only the document owner can delete this document");
+        // Check OWNER permission using RBAC
+        if (!permissionService.hasPermission(documentId, user.getId(), Role.OWNER)) {
+            throw new PermissionDeniedException("Only the document owner can delete this document");
         }
 
         // Perform soft delete

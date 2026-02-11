@@ -10,8 +10,9 @@
 
 1. [Authentication](#authentication)
 2. [Document Management](#document-management)
-3. [Error Responses](#error-responses)
-4. [Common Headers](#common-headers)
+3. [Collaborator Management](#collaborator-management)
+4. [Error Responses](#error-responses)
+5. [Common Headers](#common-headers)
 
 ---
 
@@ -626,6 +627,215 @@ curl -X GET http://localhost:8080/api/documents/yjs-snapshot/doc_abc123 \
 ```json
 {
   "message": "Error: Failed to retrieve snapshot!"
+}
+```
+
+---
+
+## Collaborator Management
+
+Document collaboration is managed through Role-Based Access Control (RBAC) with three permission levels:
+- **OWNER**: Full control (edit, delete, share, manage permissions)
+- **EDITOR**: Can edit document content
+- **VIEWER**: Read-only access
+
+### 1. Add Collaborator
+
+**Endpoint:** `POST /api/documents/{documentId}/collaborators`  
+**Description:** Grant access to a document for another user. Only OWNER can add collaborators.  
+**Authentication:** Required (JWT)
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**Request Body:**
+```json
+{
+  "userId": "number, required",
+  "role": "string, required (OWNER|EDITOR|VIEWER)",
+  "expiresInDays": "number, optional (null = permanent)"
+}
+```
+
+**cURL Example:**
+```bash
+curl -X POST http://localhost:8080/api/documents/1/collaborators \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "userId": 2,
+    "role": "EDITOR",
+    "expiresInDays": 30
+  }'
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Collaborator added successfully!"
+}
+```
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "timestamp": "2026-02-10T14:15:00",
+  "status": 403,
+  "error": "Permission Denied",
+  "message": "Only document owners can grant permissions",
+  "path": "/api/documents/1/collaborators"
+}
+```
+
+**Error Response (409 Conflict - Duplicate):**
+```json
+{
+  "timestamp": "2026-02-10T14:15:00",
+  "status": 409,
+  "error": "Duplicate Permission",
+  "message": "User already has permission for this document. Use update instead.",
+  "path": "/api/documents/1/collaborators"
+}
+```
+
+---
+
+### 2. List Collaborators
+
+**Endpoint:** `GET /api/documents/{documentId}/collaborators`  
+**Description:** Get all collaborators for a document. Any user with access can view the list.  
+**Authentication:** Required (JWT)
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**cURL Example:**
+```bash
+curl -X GET http://localhost:8080/api/documents/1/collaborators \
+  -H "Content-Type: application/json" \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "userEmail": "owner@example.com",
+    "userName": "John Doe",
+    "role": "OWNER",
+    "grantedAt": "2026-02-01T10:00:00",
+    "grantedByName": "John Doe",
+    "expiresAt": null,
+    "isExpired": false
+  },
+  {
+    "id": 2,
+    "userId": 2,
+    "userEmail": "editor@example.com",
+    "userName": "Jane Smith",
+    "role": "EDITOR",
+    "grantedAt": "2026-02-10T14:00:00",
+    "grantedByName": "John Doe",
+    "expiresAt": "2026-03-12T14:00:00",
+    "isExpired": false
+  }
+]
+```
+
+---
+
+### 3. Update Collaborator Role
+
+**Endpoint:** `PUT /api/documents/{documentId}/collaborators/{userId}`  
+**Description:** Update a collaborator's role. Only OWNER can update roles.  
+**Authentication:** Required (JWT)
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+- `userId` (required): Long - ID of the user to update
+
+**Request Body:**
+```json
+{
+  "role": "string, required (OWNER|EDITOR|VIEWER)"
+}
+```
+
+**cURL Example:**
+```bash
+curl -X PUT http://localhost:8080/api/documents/1/collaborators/2 \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "role": "VIEWER"
+  }'
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Collaborator role updated successfully!"
+}
+```
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "timestamp": "2026-02-10T14:15:00",
+  "status": 403,
+  "error": "Permission Denied",
+  "message": "Cannot change role of the last owner. Add another owner first.",
+  "path": "/api/documents/1/collaborators/1"
+}
+```
+
+---
+
+### 4. Remove Collaborator
+
+**Endpoint:** `DELETE /api/documents/{documentId}/collaborators/{userId}`  
+**Description:** Revoke a user's access to a document. Only OWNER can remove collaborators.  
+**Authentication:** Required (JWT)
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+- `userId` (required): Long - ID of the user to remove
+
+**cURL Example:**
+```bash
+curl -X DELETE http://localhost:8080/api/documents/1/collaborators/2 \
+  -H "Content-Type: application/json" \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Collaborator removed successfully!"
+}
+```
+
+**Error Response (403 Forbidden - Last Owner):**
+```json
+{
+  "timestamp": "2026-02-10T14:15:00",
+  "status": 403,
+  "error": "Permission Denied",
+  "message": "Cannot remove the last owner. Transfer ownership first or delete the document.",
+  "path": "/api/documents/1/collaborators/1"
+}
+```
+
+**Error Response (404 Not Found):**
+```json
+{
+  "timestamp": "2026-02-10T14:15:00",
+  "status": 404,
+  "error": "Resource Not Found",
+  "message": "Permission not found",
+  "path": "/api/documents/1/collaborators/999"
 }
 ```
 

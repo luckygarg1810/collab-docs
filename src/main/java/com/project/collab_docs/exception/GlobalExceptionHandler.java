@@ -23,6 +23,51 @@ import java.util.List;
 @Slf4j
 public class GlobalExceptionHandler {
 
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+                        ResourceNotFoundException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.NOT_FOUND.value(),
+                                "Resource Not Found",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Resource not found: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+        }
+
+        @ExceptionHandler(PermissionDeniedException.class)
+        public ResponseEntity<ErrorResponse> handlePermissionDeniedException(
+                        PermissionDeniedException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.FORBIDDEN.value(),
+                                "Permission Denied",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Permission denied: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
+        }
+
+        @ExceptionHandler(DuplicatePermissionException.class)
+        public ResponseEntity<ErrorResponse> handleDuplicatePermissionException(
+                        DuplicatePermissionException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.CONFLICT.value(),
+                                "Duplicate Permission",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Duplicate permission: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+        }
+
         @ExceptionHandler(MethodArgumentNotValidException.class)
         public ResponseEntity<ErrorResponse> handleValidationExceptions(
                         MethodArgumentNotValidException ex, WebRequest request) {
