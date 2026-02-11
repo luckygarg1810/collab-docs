@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collab-Docs Real-Time Test</title>
+    <script type="module">
+        import * as Y from 'https://cdn.jsdelivr.net/npm/yjs@13.6.18/+esm';
+        import * as encoding from 'https://cdn.jsdelivr.net/npm/lib0@0.2.83/encoding.js';
+        import * as decoding from 'https://cdn.jsdelivr.net/npm/lib0@0.2.83/decoding.js';
+
+        window.Y = Y;
+        window.encoding = encoding;
+        window.decoding = decoding;
+
+        console.log('✅ Yjs and lib0 loaded as ES modules');
+    </script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #333;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .config {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .editor {
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 200px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+        }
+
+        .controls {
+            margin: 15px 0;
+        }
+
+        .controls button {
+            margin-right: 10px;
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+
+        .info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #333;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🚀 Collab-Docs Real-Time Collaboration Test</h1>
+
+        <div class="info">
+            <strong>📝 Instructions:</strong><br>
+            1. Fill in your JWT token and Yjs Room ID below<br>
+            2. Click "Connect"<br>
+            3. Open this page in another tab/window<br>
+            4. Type in one tab and watch it appear in the other! ✨
+        </div>
+
+        <div class="config">
+            <label><strong>JWT Token</strong> (from login cookie):</label>
+            <input type="text" id="jwtToken" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+
+            <label><strong>Yjs Room ID</strong> (from document.yjsRoomId):</label>
+            <input type="text" id="roomId" placeholder="doc_1234567890_abc123" />
+
+            <label><strong>WebSocket URL:</strong></label>
+            <input type="text" id="wsUrl" value="ws://localhost:3000/ws/yjs/" readonly />
+
+            <button id="connectBtn" onclick="connect()">🔌 Connect</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>🔌 Disconnect</button>
+        </div>
+
+        <div id="status" class="status disconnected">❌ Not Connected</div>
+
+        <div class="controls">
+            <button onclick="clearEditor()">🗑️ Clear Content</button>
+            <button onclick="insertSample()">📝 Insert Sample Text</button>
+            <button onclick="showStats()">📊 Show Stats</button>
+        </div>
+
+        <div class="editor" id="editor" contenteditable="true"></div>
+
+        <div class="log" id="log">
+            <div class="log-entry">[System] Waiting to connect...</div>
+        </div>
+    </div>
+
+    <script>
+        // Imports handled in the module script above and attached to window
+
+
+        // Protocol Constants (Must match server)
+        const MESSAGE_SYNC = 0;
+        const MESSAGE_AWARENESS = 1;
+
+        const MESSAGE_SYNC_STEP1 = 0;
+        const MESSAGE_SYNC_STEP2 = 1;
+        const MESSAGE_SYNC_UPDATE = 2;
+
+        let ydoc, ytext, ws;
+        let isConnected = false;
+
+        const editorEl = document.getElementById('editor');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function updateStatus(message, connected) {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + (connected === true ? 'connected' : connected === false ? 'disconnected' : 'connecting');
+        }
+
+        window.connect = function () {
+            // Check if Yjs library is loaded
+            if (typeof Y === 'undefined' || typeof encoding === 'undefined') {
+                alert('❌ Libraries not loaded! Please wait a moment and try again.');
+                return;
+            }
+
+            const jwt = document.getElementById('jwtToken').value.trim();
+            const roomId = document.getElementById('roomId').value.trim();
+            const wsBaseUrl = document.getElementById('wsUrl').value.trim();
+
+            if (!jwt || !roomId) {
+                alert('Please fill in JWT Token and Room ID!');
+                return;
+            }
+
+            log('🔌 Initializing connection...', 'info');
+            updateStatus('🔄 Connecting...', null);
+
+            // Create Yjs document
+            ydoc = new Y.Doc();
+            ytext = ydoc.getText('content');
+
+            // Setup WebSocket
+            const wsUrl = `${wsBaseUrl}${roomId}?token=${jwt}`;
+            log(`📡 Connecting to: ${wsUrl}`);
+
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                log('✅ WebSocket connected!', 'success');
+                updateStatus('✅ Connected', true);
+                isConnected = true;
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+
+                // Start Sync Protocol: Send Step 1 (State Vector)
+                sendSyncStep1();
+            };
+
+            ws.onmessage = (event) => {
+                const data = new Uint8Array(event.data);
+                const decoder = decoding.createDecoder(data);
+                const messageType = decoding.readVarUint(decoder);
+
+                if (messageType === MESSAGE_SYNC) {
+                    handleSyncMessage(decoder);
+                } else if (messageType === MESSAGE_AWARENESS) {
+                    // Ignore awareness for this simple test
+                } else {
+                    log('❓ Unknown message type: ' + messageType);
+                }
+            };
+
+            ws.onerror = (error) => {
+                log('❌ WebSocket error', 'error');
+                updateStatus('❌ Connection Error', false);
+            };
+
+            ws.onclose = () => {
+                log('🔌 WebSocket closed');
+                updateStatus('❌ Disconnected', false);
+                isConnected = false;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            };
+
+            // Observe Yjs changes and update editor
+            ytext.observe(() => {
+                const content = ytext.toString();
+                if (editorEl.textContent !== content) {
+                    // Update editor content
+                    // Note: This is a simple replacement, causing cursor jumps. 
+                    // Real apps use binding libraries like y-prosemirror.
+                    editorEl.textContent = content;
+                    log('📝 Content updated from remote');
+                }
+            });
+
+            // Send local changes to server
+            ydoc.on('update', (update, origin) => {
+                if (origin !== 'websocket' && ws.readyState === WebSocket.OPEN) {
+                    sendUpdate(update);
+                    log('📤 Sent update to server');
+                }
+            });
+
+            // Handle editor input
+            editorEl.addEventListener('input', () => {
+                const newContent = editorEl.textContent;
+                const oldContent = ytext.toString();
+
+                if (newContent !== oldContent) {
+                    ydoc.transact(() => {
+                        ytext.delete(0, ytext.length);
+                        ytext.insert(0, newContent);
+                    });
+                }
+            });
+        }
+
+        window.disconnect = function () {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        window.clearEditor = function () {
+            if (!isConnected) {
+                alert('Connect first!');
+                return;
+            }
+            ydoc.transact(() => {
+                ytext.delete(0, ytext.length);
+            });
+            log('🗑️ Content cleared');
+        }
+
+        window.insertSample = function () {
+            if (!isConnected) {
+                alert('Connect first!');
+                return;
+            }
+            const samples = [
+                'Hello from collaborative editing! ',
+                'This is amazing! ',
+                'Real-time sync works! ',
+                '🎉 Success! '
+            ];
+            const sample = samples[Math.floor(Math.random() * samples.length)];
+            ydoc.transact(() => {
+                ytext.insert(ytext.length, sample);
+            });
+            log('📝 Inserted sample text');
+        }
+
+        window.showStats = function () {
+            if (!isConnected) {
+                alert('Connect first!');
+                return;
+            }
+            const stats = {
+                'Document Length': ytext.length,
+                'Content': ytext.toString().substring(0, 100) + '...',
+                'Connection Status': ws.readyState === WebSocket.OPEN ? 'Open' : 'Closed'
+            };
+            log('📊 Stats: ' + JSON.stringify(stats, null, 2));
+            alert(JSON.stringify(stats, null, 2));
+        }
+
+
+        // Protocol Helpers
+        function sendSyncStep1() {
+            const encoder = encoding.createEncoder();
+            encoding.writeVarUint(encoder, MESSAGE_SYNC);
+            encoding.writeVarUint(encoder, MESSAGE_SYNC_STEP1);
+            encoding.writeVarUint8Array(encoder, Y.encodeStateVector(ydoc));
+            ws.send(encoding.toUint8Array(encoder));
+            log('🔄 Sent Sync Step 1 (State Vector)');
+        }
+
+        function sendUpdate(update) {
+            const encoder = encoding.createEncoder();
+            encoding.writeVarUint(encoder, MESSAGE_SYNC);
+            encoding.writeVarUint(encoder, MESSAGE_SYNC_STEP_UPDATE); // Note: We use UPDATE constant
+            encoding.writeVarUint8Array(encoder, update);
+            ws.send(encoding.toUint8Array(encoder));
+        }
+
+        // Correct constant for update message is 2
+        const MESSAGE_SYNC_STEP_UPDATE = 2;
+
+        function handleSyncMessage(decoder) {
+            const syncType = decoding.readVarUint(decoder);
+
+            if (syncType === MESSAGE_SYNC_STEP1) {
+                // Server requested our state vector (shouldn't happen often in this direction, but handle it)
+                const stateVector = decoding.readVarUint8Array(decoder);
+                const encoder = encoding.createEncoder();
+                encoding.writeVarUint(encoder, MESSAGE_SYNC);
+                encoding.writeVarUint(encoder, MESSAGE_SYNC_STEP2);
+                encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(ydoc, stateVector));
+                ws.send(encoding.toUint8Array(encoder));
+
+            } else if (syncType === MESSAGE_SYNC_STEP2) {
+                // Server sent missing updates
+                const update = decoding.readVarUint8Array(decoder);
+                Y.applyUpdate(ydoc, update, 'websocket');
+                log('📥 Applied initial sync from server');
+                updateStatus('✅ Synced', true);
+
+            } else if (syncType === MESSAGE_SYNC_UPDATE) {
+                // Incremental update
+                const update = decoding.readVarUint8Array(decoder);
+                Y.applyUpdate(ydoc, update, 'websocket');
+                log('📥 Applied update from server');
+            } else {
+                log('❓ Unknown sync message type: ' + syncType);
+            }
+        }
+
+        // Auto-focus editor on page load
+        window.addEventListener('load', () => {
+            if (typeof Y !== 'undefined') {
+                log('[System] ✅ Yjs library loaded successfully!');
+                log('[System] Page loaded. Ready to connect!');
+            } else {
+                log('[System] ❌ WARNING: Yjs library failed to load from CDN!');
+                log('[System] Retrying in 2 seconds...');
+                setTimeout(() => {
+                    if (typeof Y !== 'undefined') {
+                        log('[System] ✅ Yjs library loaded!');
+                    } else {
+                        log('[System] ❌ CRITICAL: Still no Yjs. Check your internet connection.');
+                        alert('Failed to load Yjs library. Please check your internet connection and refresh the page.');
+                    }
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+
+</html>
