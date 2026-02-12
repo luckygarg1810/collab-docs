@@ -1,4 +1,4 @@
-package com.project.collab_docs.dto;
+package com.project.collab_docs.dto.response;
 
 import com.project.collab_docs.enums.Role;
 import lombok.AllArgsConstructor;

@@ -428,12 +428,9 @@ collab-docs/
 
 **High Priority:**
 - Frontend application (React/Vue with Tiptap)
-- RBAC system (roles, permissions)
-- Document sharing (collaborators table)
 - Rate limiting
 
 **Medium Priority:**
-- Document versioning
 - Export APIs (PDF, DOCX)
 - Email invitations
 - Public share links
@@ -443,6 +440,72 @@ collab-docs/
 - Document templates
 - Folder organization
 - Search functionality
+
+---
+
+## ✅ Document Versioning (Phase 7 - COMPLETED)
+
+**Implemented Features:**
+- ✅ Create version snapshots with custom names and notes
+- ✅ List version history (paginated and non-paginated)
+- ✅ Get specific version details with content
+- ✅ Restore previous versions (creates new version)
+- ✅ Delete individual versions (OWNER only)
+- ✅ Cleanup old versions keeping N most recent
+- ✅ Version statistics (count, storage usage)
+- ✅ SHA-256 hash for integrity verification
+- ✅ Configurable version limits per document
+- ✅ Permission-based access (VIEWER/EDITOR/OWNER)
+
+**API Endpoints:**
+```bash
+POST   /api/documents/{id}/versions           # Create version
+GET    /api/documents/{id}/versions           # List versions
+GET    /api/versions/{versionId}              # Get version details
+POST   /api/versions/{versionId}/restore      # Restore version
+DELETE /api/versions/{versionId}              # Delete version
+POST   /api/documents/{id}/versions/cleanup   # Cleanup old versions
+GET    /api/documents/{id}/versions/stats     # Get statistics
+```
+
+**Database Schema:**
+```sql
+CREATE TABLE document_versions (
+    id BIGSERIAL PRIMARY KEY,
+    document_id BIGINT NOT NULL REFERENCES documents(id),
+    version_number INTEGER NOT NULL,
+    created_by_user_id BIGINT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL,
+    version_name VARCHAR(255),
+    yjs_snapshot BYTEA NOT NULL,
+    content_snapshot TEXT,
+    size_bytes BIGINT NOT NULL,
+    snapshot_hash VARCHAR(64),
+    change_notes TEXT,
+    UNIQUE(document_id, version_number)
+);
+
+CREATE INDEX idx_document_id ON document_versions(document_id);
+CREATE INDEX idx_created_at ON document_versions(created_at);
+```
+
+**Configuration:**
+```properties
+# Maximum versions per document (0 = unlimited)
+app.version.max-versions-per-document=${MAX_VERSIONS_PER_DOCUMENT:100}
+```
+
+**Why We Implemented This:**
+1. **Document Recovery** - Users can restore previous states if changes go wrong
+2. **Audit Trail** - Track who changed what and when for compliance
+3. **Collaboration Safety** - Teams can experiment without fear of losing work
+4. **Storage Management** - Configurable limits and cleanup tools prevent unbounded growth
+5. **Perfect Restoration** - Yjs binary snapshots ensure exact CRDT state recovery
+
+**Test Script:**
+```bash
+./test-versioning.sh
+```
 
 ---
 
@@ -523,6 +586,7 @@ node yjs-service/test-postgres-integration.js
 | 2026-02-08 | Phase 2 | ✅ Node.js Yjs service with JWT, Redis |
 | 2026-02-08 | Phase 3 | ✅ Removed GraalVM, cleaned WebSocket |
 | 2026-02-09 | Phase 4 | ✅ PostgreSQL persistence, dual-layer architecture, bug fixes |
+| 2026-02-12 | Phase 7 | ✅ Document versioning system with complete CRUD operations |
 
 ---
 
@@ -532,9 +596,11 @@ node yjs-service/test-postgres-integration.js
 **Yjs Service:** ⭐⭐⭐⭐⭐ Production Ready  
 **Persistence:** ⭐⭐⭐⭐⭐ Dual-layer Complete  
 **Authentication:** ⭐⭐⭐⭐⭐ Full JWT Flow  
+**RBAC:** ⭐⭐⭐⭐⭐ Complete (3-tier permissions)  
+**Versioning:** ⭐⭐⭐⭐⭐ Complete (Full history management)  
 **Frontend:** ⭐ Not Started  
 
-**Overall Completion:** 80% (Backend complete, needs frontend)
+**Overall Completion:** 85% (Backend feature-complete, needs frontend)
 
 ---
 

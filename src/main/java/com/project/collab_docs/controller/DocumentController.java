@@ -2,10 +2,10 @@ package com.project.collab_docs.controller;
 
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
-import com.project.collab_docs.request.CreateDocumentRequest;
-import com.project.collab_docs.request.UpdateVisibilityRequest;
-import com.project.collab_docs.response.DocumentResponse;
-import com.project.collab_docs.response.MessageResponse;
+import com.project.collab_docs.dto.request.CreateDocumentRequest;
+import com.project.collab_docs.dto.request.UpdateVisibilityRequest;
+import com.project.collab_docs.dto.response.DocumentResponse;
+import com.project.collab_docs.dto.response.MessageResponse;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.service.DocumentService;
 import jakarta.validation.Valid;

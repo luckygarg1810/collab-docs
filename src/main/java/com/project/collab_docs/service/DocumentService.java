@@ -8,7 +8,7 @@ import com.project.collab_docs.exception.PermissionDeniedException;
 import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.repository.UserRepository;
-import com.project.collab_docs.response.DocumentResponse;
+import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;

@@ -1,4 +1,4 @@
-package com.project.collab_docs.request;
+package com.project.collab_docs.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

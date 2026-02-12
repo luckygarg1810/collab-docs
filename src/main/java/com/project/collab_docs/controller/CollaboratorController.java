@@ -1,9 +1,9 @@
 package com.project.collab_docs.controller;
 
-import com.project.collab_docs.dto.CollaboratorRequest;
-import com.project.collab_docs.dto.CollaboratorResponse;
-import com.project.collab_docs.dto.UpdateRoleRequest;
-import com.project.collab_docs.response.MessageResponse;
+import com.project.collab_docs.dto.request.CollaboratorRequest;
+import com.project.collab_docs.dto.response.CollaboratorResponse;
+import com.project.collab_docs.dto.request.UpdateRoleRequest;
+import com.project.collab_docs.dto.response.MessageResponse;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.service.PermissionService;
 import jakarta.validation.Valid;

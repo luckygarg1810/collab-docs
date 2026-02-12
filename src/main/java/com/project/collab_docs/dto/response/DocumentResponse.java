@@ -1,4 +1,4 @@
-package com.project.collab_docs.response;
+package com.project.collab_docs.dto.response;
 
 import com.project.collab_docs.enums.Visibility;
 import lombok.AllArgsConstructor;

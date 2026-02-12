@@ -1,6 +1,6 @@
 package com.project.collab_docs.exception;
 
-import com.project.collab_docs.response.ErrorResponse;
+import com.project.collab_docs.dto.response.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -165,6 +165,21 @@ public class GlobalExceptionHandler {
 
                 log.warn("Illegal argument: {}", ex.getMessage());
                 return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+
+        @ExceptionHandler(VersionLimitExceededException.class)
+        public ResponseEntity<ErrorResponse> handleVersionLimitExceededException(
+                        VersionLimitExceededException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.CONFLICT.value(),
+                                "Version Limit Exceeded",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Version limit exceeded: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
         }
 
         @ExceptionHandler(RuntimeException.class)

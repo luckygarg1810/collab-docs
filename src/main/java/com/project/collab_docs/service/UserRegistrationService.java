@@ -5,7 +5,7 @@ import com.project.collab_docs.entities.User;
 import com.project.collab_docs.enums.OtpPurpose;
 import com.project.collab_docs.repository.PendingUserRepository;
 import com.project.collab_docs.repository.UserRepository;
-import com.project.collab_docs.request.RegisterRequest;
+import com.project.collab_docs.dto.request.RegisterRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

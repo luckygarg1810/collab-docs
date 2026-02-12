@@ -1,9 +1,9 @@
 package com.project.collab_docs.controller;
 
+import com.project.collab_docs.dto.request.*;
 import com.project.collab_docs.entities.User;
-import com.project.collab_docs.request.*;
-import com.project.collab_docs.response.AuthResponse;
-import com.project.collab_docs.response.MessageResponse;
+import com.project.collab_docs.dto.response.AuthResponse;
+import com.project.collab_docs.dto.response.MessageResponse;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.security.JwtUtil;
 import com.project.collab_docs.service.PasswordResetService;

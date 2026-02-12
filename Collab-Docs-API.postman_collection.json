@@ -623,6 +623,208 @@
             "description": "Collaborator management with RBAC (OWNER/EDITOR/VIEWER permissions)"
         },
         {
+            "name": "Document Versioning",
+            "item": [
+                {
+                    "name": "Create Version",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"versionName\": \"Final Draft\",\n  \"changeNotes\": \"Completed all sections and reviewed content\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/versions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "versions"
+                            ]
+                        },
+                        "description": "Create a new version snapshot of the current document state. Requires EDITOR permission or higher. Captures both Yjs binary snapshot and content. Optional versionName and changeNotes for better tracking."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Document Versions",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/versions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "versions"
+                            ]
+                        },
+                        "description": "List all versions for a document with metadata. Requires VIEWER permission or higher. Returns versions ordered by version number descending (newest first)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Versions (Paginated)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/versions?page=0&size=20",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "versions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "0",
+                                    "description": "Page number (0-based)"
+                                },
+                                {
+                                    "key": "size",
+                                    "value": "20",
+                                    "description": "Page size"
+                                }
+                            ]
+                        },
+                        "description": "List versions with pagination. Useful for documents with many versions. Returns Page object with content, pagination details, and total counts."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Version Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/versions/42",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "versions",
+                                "42"
+                            ]
+                        },
+                        "description": "Get a specific version with its content snapshot. Requires VIEWER permission on the document. Returns both Yjs binary snapshot and content snapshot for viewing or restoration."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Restore Version",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/versions/42/restore",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "versions",
+                                "42",
+                                "restore"
+                            ]
+                        },
+                        "description": "Restore a document to a previous version. This creates a NEW version with the old content rather than overwriting history. Requires EDITOR permission or higher. Updates both PostgreSQL and Yjs service."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Version",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/versions/42",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "versions",
+                                "42"
+                            ]
+                        },
+                        "description": "Delete a specific version. Requires OWNER permission. Cannot delete if it's the only version (at least one version must remain for audit purposes)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cleanup Old Versions",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/versions/cleanup?keepCount=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "versions",
+                                "cleanup"
+                            ],
+                            "query": [
+                                {
+                                    "key": "keepCount",
+                                    "value": "10",
+                                    "description": "Number of recent versions to keep"
+                                }
+                            ]
+                        },
+                        "description": "Delete old versions keeping only N most recent. Requires OWNER permission. Useful for storage management and enforcing quotas. Default keepCount is 10."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Version Statistics",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/documents/1/versions/stats",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1",
+                                "versions",
+                                "stats"
+                            ]
+                        },
+                        "description": "Get version count and storage usage for a document. Requires VIEWER permission or higher. Returns version count, total storage in bytes, and formatted storage string."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Document version control and history management. Create snapshots, restore previous versions, and manage version storage. Full RBAC integration with VIEWER/EDITOR/OWNER permissions."
+        },
+        {
             "name": "Yjs Service (Node.js)",
             "item": [
                 {

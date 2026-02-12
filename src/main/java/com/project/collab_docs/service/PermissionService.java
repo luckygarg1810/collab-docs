@@ -1,6 +1,6 @@
 package com.project.collab_docs.service;
 
-import com.project.collab_docs.dto.CollaboratorResponse;
+import com.project.collab_docs.dto.response.CollaboratorResponse;
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.DocumentPermission;
 import com.project.collab_docs.entities.User;

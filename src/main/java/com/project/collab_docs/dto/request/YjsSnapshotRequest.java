@@ -1,4 +1,4 @@
-package com.project.collab_docs.request;
+package com.project.collab_docs.dto.request;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

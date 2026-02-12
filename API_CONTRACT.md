@@ -11,8 +11,9 @@
 1. [Authentication](#authentication)
 2. [Document Management](#document-management)
 3. [Collaborator Management](#collaborator-management)
-4. [Error Responses](#error-responses)
-5. [Common Headers](#common-headers)
+4. [Document Versioning](#document-versioning)
+5. [Error Responses](#error-responses)
+6. [Common Headers](#common-headers)
 
 ---
 
@@ -836,6 +837,349 @@ curl -X DELETE http://localhost:8080/api/documents/1/collaborators/2 \
   "error": "Resource Not Found",
   "message": "Permission not found",
   "path": "/api/documents/1/collaborators/999"
+}
+```
+
+---
+
+## Document Versioning
+
+Document versioning allows users to create snapshots of document state, view version history, restore previous versions, and manage version storage.
+
+### 1. Create Version
+
+**Endpoint:** `POST /api/documents/{documentId}/versions`  
+**Description:** Create a new version snapshot of the current document state.  
+**Authentication:** Required (JWT)  
+**Permission Required:** EDITOR or higher
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**Request Body:**
+```json
+{
+  "versionName": "string, optional, max 255 chars",
+  "changeNotes": "string, optional, max 5000 chars"
+}
+```
+
+**cURL Example:**
+```bash
+curl -X POST http://localhost:8080/api/documents/1/versions \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "versionName": "Final Draft",
+    "changeNotes": "Completed all sections and reviewed content"
+  }'
+```
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 42,
+  "documentId": 1,
+  "versionNumber": 5,
+  "versionName": "Final Draft",
+  "changeNotes": "Completed all sections and reviewed content",
+  "createdByUserId": 1,
+  "createdByName": "John Doe",
+  "createdByEmail": "john@example.com",
+  "createdAt": "2026-02-12T10:30:00",
+  "sizeBytes": 45678,
+  "snapshotHash": "a3f2b1...",
+  "versionIdentifier": "v5",
+  "displayName": "Final Draft (v5)"
+}
+```
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "timestamp": "2026-02-12T10:30:00",
+  "status": 403,
+  "error": "Permission Denied",
+  "message": "You must have EDITOR permission to create versions",
+  "path": "/api/documents/1/versions"
+}
+```
+
+**Error Response (409 Conflict - Limit Exceeded):**
+```json
+{
+  "timestamp": "2026-02-12T10:30:00",
+  "status": 409,
+  "error": "Version Limit Exceeded",
+  "message": "Document has reached maximum version limit of 100. Please delete old versions first.",
+  "path": "/api/documents/1/versions"
+}
+```
+
+---
+
+### 2. List Document Versions
+
+**Endpoint:** `GET /api/documents/{documentId}/versions`  
+**Description:** List all versions for a document with metadata.  
+**Authentication:** Required (JWT)  
+**Permission Required:** VIEWER or higher
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**Query Parameters:**
+- `page` (optional): int - Page number (0-based), default: 0
+- `size` (optional): int - Page size, default: 20
+- Set `page=-1` to get all versions without pagination
+
+**cURL Example:**
+```bash
+# Get all versions
+curl -X GET http://localhost:8080/api/documents/1/versions \
+  -b cookies.txt
+
+# Get paginated versions
+curl -X GET "http://localhost:8080/api/documents/1/versions?page=0&size=10" \
+  -b cookies.txt
+```
+
+**Success Response (200 OK - All Versions):**
+```json
+[
+  {
+    "id": 45,
+    "documentId": 1,
+    "versionNumber": 5,
+    "versionName": "Final Draft",
+    "changeNotes": "Completed all sections",
+    "createdByUserId": 1,
+    "createdByName": "John Doe",
+    "createdByEmail": "john@example.com",
+    "createdAt": "2026-02-12T10:30:00",
+    "sizeBytes": 45678,
+    "snapshotHash": "a3f2b1...",
+    "versionIdentifier": "v5",
+    "displayName": "Final Draft (v5)"
+  },
+  {
+    "id": 44,
+    "documentId": 1,
+    "versionNumber": 4,
+    "versionName": null,
+    "changeNotes": null,
+    "createdByUserId": 2,
+    "createdByName": "Jane Smith",
+    "createdByEmail": "jane@example.com",
+    "createdAt": "2026-02-11T15:20:00",
+    "sizeBytes": 42000,
+    "snapshotHash": "b4e1c2...",
+    "versionIdentifier": "v4",
+    "displayName": "Version 4"
+  }
+]
+```
+
+**Success Response (200 OK - Paginated):**
+```json
+{
+  "content": [...],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 10
+  },
+  "totalElements": 25,
+  "totalPages": 3,
+  "last": false,
+  "first": true
+}
+```
+
+---
+
+### 3. Get Version Details
+
+**Endpoint:** `GET /api/versions/{versionId}`  
+**Description:** Get a specific version with its content snapshot.  
+**Authentication:** Required (JWT)  
+**Permission Required:** VIEWER on the document
+
+**Path Parameters:**
+- `versionId` (required): Long - ID of the version
+
+**cURL Example:**
+```bash
+curl -X GET http://localhost:8080/api/versions/42 \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "versionId": 42,
+  "versionNumber": 5,
+  "versionName": "Final Draft",
+  "contentSnapshot": "<html>Document content...</html>",
+  "yjsSnapshot": "<base64-encoded-binary-data>",
+  "sizeBytes": 45678,
+  "snapshotHash": "a3f2b1c4d5..."
+}
+```
+
+**Note:** The `yjsSnapshot` field contains the binary Yjs CRDT snapshot, which can be used to perfectly restore the collaborative editing state.
+
+---
+
+### 4. Restore Version
+
+**Endpoint:** `POST /api/versions/{versionId}/restore`  
+**Description:** Restore a document to a previous version. This creates a NEW version with the old content rather than overwriting history.  
+**Authentication:** Required (JWT)  
+**Permission Required:** EDITOR or higher
+
+**Path Parameters:**
+- `versionId` (required): Long - ID of the version to restore
+
+**cURL Example:**
+```bash
+curl -X POST http://localhost:8080/api/versions/42/restore \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Version restored successfully",
+  "newVersion": {
+    "id": 46,
+    "documentId": 1,
+    "versionNumber": 6,
+    "versionName": "Restored from Final Draft (v5)",
+    "changeNotes": "Restored from version 5 created by john@example.com on 2026-02-12T10:30:00",
+    "createdByUserId": 1,
+    "createdByName": "John Doe",
+    "createdByEmail": "john@example.com",
+    "createdAt": "2026-02-12T14:00:00",
+    "sizeBytes": 45678,
+    "snapshotHash": "a3f2b1...",
+    "versionIdentifier": "v6",
+    "displayName": "Restored from Final Draft (v5) (v6)"
+  }
+}
+```
+
+**Key Behavior:**
+- The current document content is replaced with the old version's content
+- A new version is created to record this restoration
+- The Yjs service is updated with the restored snapshot
+- Version history is preserved (no versions are deleted)
+
+---
+
+### 5. Delete Version
+
+**Endpoint:** `DELETE /api/versions/{versionId}`  
+**Description:** Delete a specific version. Only document owners can delete versions. Cannot delete if it's the only version.  
+**Authentication:** Required (JWT)  
+**Permission Required:** OWNER
+
+**Path Parameters:**
+- `versionId` (required): Long - ID of the version to delete
+
+**cURL Example:**
+```bash
+curl -X DELETE http://localhost:8080/api/versions/42 \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Version deleted successfully"
+}
+```
+
+**Error Response (400 Bad Request - Last Version):**
+```json
+{
+  "timestamp": "2026-02-12T14:15:00",
+  "status": 400,
+  "error": "Invalid Argument",
+  "message": "Cannot delete the only version. At least one version must remain for audit purposes.",
+  "path": "/api/versions/42"
+}
+```
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "timestamp": "2026-02-12T14:15:00",
+  "status": 403,
+  "error": "Permission Denied",
+  "message": "Only document owners can delete versions",
+  "path": "/api/versions/42"
+}
+```
+
+---
+
+### 6. Cleanup Old Versions
+
+**Endpoint:** `POST /api/documents/{documentId}/versions/cleanup`  
+**Description:** Delete old versions keeping only N most recent. Useful for storage management.  
+**Authentication:** Required (JWT)  
+**Permission Required:** OWNER
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**Query Parameters:**
+- `keepCount` (optional): int - Number of recent versions to keep, default: 10
+
+**cURL Example:**
+```bash
+curl -X POST "http://localhost:8080/api/documents/1/versions/cleanup?keepCount=10" \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Cleanup completed successfully",
+  "deletedCount": 15,
+  "keptCount": 10
+}
+```
+
+**Use Cases:**
+- Storage quota management
+- Automated cleanup jobs
+- Maintaining only recent versions
+
+---
+
+### 7. Get Version Statistics
+
+**Endpoint:** `GET /api/documents/{documentId}/versions/stats`  
+**Description:** Get version count and storage usage for a document.  
+**Authentication:** Required (JWT)  
+**Permission Required:** VIEWER or higher
+
+**Path Parameters:**
+- `documentId` (required): Long - ID of the document
+
+**cURL Example:**
+```bash
+curl -X GET http://localhost:8080/api/documents/1/versions/stats \
+  -b cookies.txt
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "versionCount": 25,
+  "totalStorageBytes": 1245678,
+  "formattedStorage": "1.19 MB"
 }
 ```
 

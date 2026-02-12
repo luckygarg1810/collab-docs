@@ -1,4 +1,4 @@
-package com.project.collab_docs.response;
+package com.project.collab_docs.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
