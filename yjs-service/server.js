@@ -14,6 +14,11 @@ const {
     getStateVector,
     getStateAsUpdate,
     saveDocument,
+    closeDocument,
+    saveAllDocuments,
+    startCleanupInterval,
+    stopCleanupInterval,
+    updateActivityTimestamp,
     getStats
 } = require('./services/yjsHandler');
 const {
@@ -114,6 +119,7 @@ wss.on('connection', async (ws, request) => {
     }
     documentConnections.get(documentId).add(ws);
 
+
     // Add user to active users in Redis
     await addActiveUser(documentId, userInfo.userId, {
         name: userInfo.name,
@@ -124,14 +130,27 @@ wss.on('connection', async (ws, request) => {
     const ydoc = await getDocument(documentId);
     const awareness = getAwareness(documentId);
 
+    // Update activity timestamp on connection (tracks read-only viewers)
+    updateActivityTimestamp(documentId);
+
     // Store metadata on WebSocket
     ws.documentId = documentId;
     ws.userInfo = userInfo;
     ws.isAlive = true;
 
-    // CRITICAL: Track Yjs client ID for awareness cleanup
-    // Each Y.Doc has a unique clientID that awareness protocol uses
-    ws.yjsClientID = ydoc.clientID;
+    // Track client IDs from awareness updates for proper cleanup
+    // Client IDs come from the client's Y.Doc, not the server's
+    ws.yjsClientIDs = new Set();
+
+    // Track awareness updates to capture client IDs
+    const awarenessUpdateHandler = ({ added, updated, removed }) => {
+        // Add new client IDs to our tracking set
+        added.forEach(id => ws.yjsClientIDs.add(id));
+        updated.forEach(id => ws.yjsClientIDs.add(id));
+    };
+
+    awareness.on('update', awarenessUpdateHandler);
+    ws.awarenessUpdateHandler = awarenessUpdateHandler; // Store for cleanup
 
     // Send initial sync message (Step 1: send state vector)
     try {
@@ -199,17 +218,23 @@ wss.on('connection', async (ws, request) => {
         // Remove from active users
         await removeActiveUser(documentId, userInfo.userId);
 
-        // Remove from awareness (using the tracked Yjs client ID)
-        if (awareness && ws.yjsClientID !== undefined) {
+        // Remove from awareness (using tracked client IDs from awareness updates)
+        if (awareness && ws.yjsClientIDs && ws.yjsClientIDs.size > 0) {
+            const clientIDs = Array.from(ws.yjsClientIDs);
             awarenessProtocol.removeAwarenessStates(
                 awareness,
-                [ws.yjsClientID], // ✅ Now using the correct Yjs client ID
+                clientIDs,
                 null
             );
-            logger.debug('Removed awareness state for client', {
+            logger.debug('Removed awareness states for clients', {
                 documentId,
-                yjsClientID: ws.yjsClientID
+                clientIDs
             });
+        }
+
+        // Remove awareness update handler
+        if (awareness && ws.awarenessUpdateHandler) {
+            awareness.off('update', ws.awarenessUpdateHandler);
         }
     });
 
@@ -262,6 +287,9 @@ async function handleSyncMessage(ws, decoder, documentId, ydoc) {
  */
 function handleAwarenessMessage(ws, decoder, documentId, awareness) {
     if (!awareness) return;
+
+    // Update activity timestamp on awareness update
+    updateActivityTimestamp(documentId);
 
     const awarenessUpdate = decoding.readVarUint8Array(decoder);
     awarenessProtocol.applyAwarenessUpdate(awareness, awarenessUpdate, ws);
@@ -329,14 +357,34 @@ const heartbeatInterval = setInterval(() => {
     });
 }, 30000); // Every 30 seconds
 
+// Start periodic cleanup of inactive documents
+const cleanupInterval = startCleanupInterval();
+
 // Graceful shutdown
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 async function shutdown() {
-    logger.info('Shutting down server...');
+    logger.info('Shutting down server gracefully...');
 
     clearInterval(heartbeatInterval);
+
+
+    // Stop cleanup interval
+    stopCleanupInterval(cleanupInterval);
+
+    // Save all active documents before shutdown
+    logger.info('Saving all active documents before shutdown...');
+    try {
+        const result = await saveAllDocuments();
+        logger.info('Pre-shutdown save completed', {
+            total: result.total,
+            saved: result.saved,
+            failed: result.failed
+        });
+    } catch (error) {
+        logger.error('Error during pre-shutdown save', { error: error.message });
+    }
 
     // Close all WebSocket connections
     wss.clients.forEach((ws) => {
@@ -351,6 +399,7 @@ async function shutdown() {
     // Close Redis connection
     await closeRedis();
 
+    logger.info('Graceful shutdown complete');
     process.exit(0);
 }
 

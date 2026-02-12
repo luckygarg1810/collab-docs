@@ -23,8 +23,16 @@
 ┌──────────────────┐
 │ Node.js Service  │
 │  Auto-save:      │
-│  ├─→ Redis       │ (Fast cache, 24hr TTL)
-│  └─→ PostgreSQL  │ (Permanent storage)
+│  ├─→ Redis       │ (L2 cache: Fast, latest, 24hr TTL)
+│  └─→ PostgreSQL  │ (L3 storage: Permanent)
+└──────────────────┘
+       ↑
+       │ (on document load)
+┌──────────────────┐
+│ Load Strategy:   │
+│  1. Try Redis    │ (Latest changes, microsecond latency)
+│  2. Try Postgres │ (If Redis miss, warm up cache)
+│  3. New Doc      │ (If both miss)
 └──────────────────┘
 ```
 
@@ -563,14 +571,6 @@ curl -X POST http://localhost:8080/api/documents/create \
 # 5. Extract JWT and yjsRoomId
 JWT=$(grep -oP 'jwt=\K[^;]+' cookies.txt)
 ROOM_ID=$(jq -r .yjsRoomId doc.json)
-
-# 6. Test snapshot persistence
-echo "Testing binary snapshot save..."
-./yjs-service/test-snapshot-endpoints.sh
-
-# 7. Test Node.js integration
-echo "Testing PostgreSQL adapter..."
-node yjs-service/test-postgres-integration.js
 
 # 8. Connect to WebSocket (requires websocat or similar)
 # websocat "ws://localhost:3000/ws/yjs/$ROOM_ID?token=$JWT"
