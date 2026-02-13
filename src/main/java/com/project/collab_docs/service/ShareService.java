@@ -2,6 +2,7 @@ package com.project.collab_docs.service;
 
 import com.project.collab_docs.dto.request.CreateShareLinkRequest;
 import com.project.collab_docs.dto.request.ShareInvitationRequest;
+import com.project.collab_docs.dto.response.DocumentAccessResponse;
 import com.project.collab_docs.dto.response.ShareInvitationResponse;
 import com.project.collab_docs.dto.response.ShareLinkResponse;
 import com.project.collab_docs.entities.*;
@@ -175,50 +176,78 @@ public class ShareService {
     /**
      * Grant access to a user via share link and increment usage counter
      *
+     * This method is called AFTER user authentication (login/register).
+     * It creates a permanent DocumentPermission record for the user.
+     *
      * @param token  Share link token
-     * @param userId User to grant access to
-     * @throws InvalidShareLinkException if link is invalid
+     * @param userId User to grant access to (must be authenticated)
+     * @return Document details for accessing the document
+     * @throws InvalidShareLinkException if link is invalid, expired, or usage limit reached
      * @throws ResourceNotFoundException if user not found
      */
     @Transactional
-    public void accessViaShareLink(String token, Long userId) {
+    public DocumentAccessResponse accessViaShareLink(String token, Long userId) {
         ShareLink shareLink = shareLinkRepository.findByToken(token)
                 .orElseThrow(() -> new InvalidShareLinkException("Share link not found"));
 
         if (!shareLink.isValid()) {
-            throw new InvalidShareLinkException("Share link is not valid");
+            if (shareLink.isExpired()) {
+                throw new InvalidShareLinkException("This share link has expired");
+            }
+            if (shareLink.isUsageLimitReached()) {
+                throw new InvalidShareLinkException("This share link has reached its usage limit");
+            }
+            if (!shareLink.getIsActive()) {
+                throw new InvalidShareLinkException("This share link has been deactivated");
+            }
+            throw new InvalidShareLinkException("This share link is no longer valid");
         }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        Document document = shareLink.getDocument();
+        boolean alreadyHadAccess = false;
+
         // Check if user already has permission
-        if (permissionRepository.existsByDocumentIdAndUserId(shareLink.getDocument().getId(), userId)) {
+        if (permissionRepository.existsByDocumentIdAndUserId(document.getId(), userId)) {
             // User already has access, just increment usage
-            shareLink.incrementUsage();
-            shareLinkRepository.save(shareLink);
+            alreadyHadAccess = true;
             log.info("User {} accessed document {} via share link (already has permission)",
-                    userId, shareLink.getDocument().getId());
-            return;
+                    userId, document.getId());
+        } else {
+            // Grant permission
+            DocumentPermission permission = DocumentPermission.builder()
+                    .document(document)
+                    .user(user)
+                    .role(shareLink.getRole())
+                    .grantedBy(shareLink.getCreatedBy())
+                    .grantedAt(LocalDateTime.now())
+                    .build();
+
+            permissionRepository.save(permission);
+            log.info("Granted {} permission to user {} for document {} via share link",
+                    shareLink.getRole(), userId, document.getId());
         }
 
-        // Grant permission
-        DocumentPermission permission = DocumentPermission.builder()
-                .document(shareLink.getDocument())
-                .user(user)
-                .role(shareLink.getRole())
-                .grantedBy(shareLink.getCreatedBy())
-                .grantedAt(LocalDateTime.now())
-                .build();
-
-        permissionRepository.save(permission);
-
-        // Increment usage
+        // Increment usage counter
         shareLink.incrementUsage();
         shareLinkRepository.save(shareLink);
 
-        log.info("Granted {} permission to user {} for document {} via share link",
-                shareLink.getRole(), userId, shareLink.getDocument().getId());
+        // Return document details
+        return DocumentAccessResponse.builder()
+                .documentId(document.getId())
+                .title(document.getTitle())
+                .yjsRoomId(document.getYjsRoomId())
+                .role(shareLink.getRole())
+                .isAnonymous(false)
+                .hasPermissionGranted(!alreadyHadAccess)
+                .accessExpiresAt(shareLink.getExpiresAt())
+                .message(alreadyHadAccess
+                    ? "You already have access to this document"
+                    : "Access granted! You can now collaborate on this document")
+                .ownerName(document.getOwner().getFirstName() + " " + document.getOwner().getLastName())
+                .build();
     }
 
     /**

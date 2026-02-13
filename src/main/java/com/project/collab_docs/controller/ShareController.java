@@ -2,6 +2,7 @@ package com.project.collab_docs.controller;
 
 import com.project.collab_docs.dto.request.CreateShareLinkRequest;
 import com.project.collab_docs.dto.request.ShareInvitationRequest;
+import com.project.collab_docs.dto.response.DocumentAccessResponse;
 import com.project.collab_docs.dto.response.ShareInvitationResponse;
 import com.project.collab_docs.dto.response.ShareLinkResponse;
 import com.project.collab_docs.security.CustomUserDetails;
@@ -121,35 +122,44 @@ public class ShareController {
     }
 
     /**
-     * Access a document via share link (requires authentication if link requires auth)
+     * Access a document via share link (requires authentication)
+     *
+     * Flow:
+     * 1. Unauthenticated user clicks link → Frontend shows login/register page
+     * 2. After login/register → User is redirected back to this endpoint
+     * 3. Backend grants permanent access and returns document details
      */
     @PostMapping("/share/{token}/access")
     @Operation(
         summary = "Access via share link",
-        description = "Grant access to document via share link (authentication may be required)",
+        description = "Grant access to document via share link. User must be authenticated (logged in or registered). Returns document details and grants permanent access permission.",
         security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Access granted successfully"),
-        @ApiResponse(responseCode = "400", description = "Share link is invalid or requires authentication"),
-        @ApiResponse(responseCode = "401", description = "Authentication required"),
+        @ApiResponse(responseCode = "200", description = "Access granted successfully, document permission created"),
+        @ApiResponse(responseCode = "400", description = "Share link is invalid, expired, or usage limit reached"),
+        @ApiResponse(responseCode = "401", description = "User must login or register to access this document"),
         @ApiResponse(responseCode = "404", description = "Share link not found")
     })
-    public ResponseEntity<Map<String, Object>> accessViaShareLink(
+    public ResponseEntity<?> accessViaShareLink(
             @PathVariable String token,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
+        // Check if user is authenticated
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Map.of("error", "Authentication required"));
+                .body(Map.of(
+                    "error", "Authentication required",
+                    "message", "Please login or register to access this document",
+                    "requiresAuth", true,
+                    "loginUrl", "/api/auth/login",
+                    "registerUrl", "/api/auth/register"
+                ));
         }
 
-        shareService.accessViaShareLink(token, userDetails.getId());
-
-        return ResponseEntity.ok(Map.of(
-            "message", "Access granted successfully",
-            "userId", userDetails.getId()
-        ));
+        // Grant access and return document details
+        DocumentAccessResponse response = shareService.accessViaShareLink(token, userDetails.getId());
+        return ResponseEntity.ok(response);
     }
 
     /**

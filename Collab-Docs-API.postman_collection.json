@@ -926,7 +926,7 @@
                                         "access"
                                     ]
                                 },
-                                "description": "Grant access to a document via share link. Requires authentication. Creates permission if user doesn't have one. Increments usage counter."
+                               "description": "Grant permanent access to a document via share link.\n\n**Flow (Option 2: Force Registration):**\n1. Unauthenticated user clicks share link\n2. Frontend shows login/register page\n3. After authentication, user is redirected to this endpoint\n4. Backend creates permanent DocumentPermission\n5. Returns document details (ID, title, yjsRoomId, role, owner)\n\n**Authentication:** Required (JWT token in cookie)\n**Response:** DocumentAccessResponse with document details\n**Side Effects:** Creates permission record, increments usage counter"
                             },
                             "response": []
                         },

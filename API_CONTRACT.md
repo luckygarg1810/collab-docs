@@ -1,53 +1,52 @@
-# Collab-Docs API Contract
+# Collab-Docs API Contract v2.0
 
-**Version:** 1.0  
+**Last Updated:** February 13, 2026  
 **Base URL:** `http://localhost:8080`  
+**WebSocket URL:** `ws://localhost:3000`  
+**API Version:** 2.0  
 **Authentication:** JWT (HttpOnly Cookie)
 
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
-1. [Authentication](#authentication)
-2. [Document Management](#document-management)
-3. [Collaborator Management](#collaborator-management)
-4. [Document Versioning](#document-versioning)
-5. [Error Responses](#error-responses)
-6. [Common Headers](#common-headers)
+1. [Authentication & Authorization](#1-authentication--authorization)
+2. [Document Management](#2-document-management)
+3. [Real-Time Collaboration (WebSocket)](#3-real-time-collaboration-websocket)
+4. [Document Versioning](#4-document-versioning)
+5. [Collaborator Management](#5-collaborator-management)
+6. [Document Sharing](#6-document-sharing)
+7. [Error Handling](#7-error-handling)
+8. [Rate Limiting](#8-rate-limiting)
+9. [Frontend Integration Guide](#9-frontend-integration-guide)
 
 ---
 
-## Authentication
+## 🔐 1. Authentication & Authorization
 
-All authentication endpoints are publicly accessible. After successful login, a JWT token is set as an HttpOnly cookie.
+All authenticated endpoints require JWT token in HttpOnly cookie.
 
-### 1. Register User
+### 1.1 Register New User
 
 **Endpoint:** `POST /api/auth/register`  
-**Description:** Initiate user registration. Sends OTP to email for verification.  
-**Authentication:** None
+**Auth Required:** No  
+**Description:** Initiate user registration with email OTP verification
 
 **Request Body:**
 ```json
 {
-  "firstName": "string, required, max 50 chars",
-  "lastName": "string, required, max 50 chars",
-  "email": "string, required, valid email",
-  "password": "string, required, 8-120 chars"
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john.doe@example.com",
+  "password": "SecurePass123!"
 }
 ```
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john.doe@example.com",
-    "password": "SecurePass123!"
-  }'
-```
+**Validation Rules:**
+- `firstName`: 2-50 characters, required
+- `lastName`: 2-50 characters, required
+- `email`: Valid email format, required, unique
+- `password`: Min 8 chars, must contain uppercase, lowercase, number, special char
 
 **Success Response (200 OK):**
 ```json
@@ -56,31 +55,24 @@ curl -X POST http://localhost:8080/api/auth/register \
 }
 ```
 
+**Error Responses:**
+- `400 Bad Request`: Validation failed or email already exists
+- `500 Internal Server Error`: Server error
+
 ---
 
-### 2. Verify OTP
+### 1.2 Verify Email OTP
 
 **Endpoint:** `POST /api/auth/verify-otp`  
-**Description:** Complete registration by verifying OTP sent to email.  
-**Authentication:** None
+**Auth Required:** No  
+**Description:** Complete registration by verifying OTP sent to email
 
 **Request Body:**
 ```json
 {
-  "email": "string, required",
-  "otp": "string, required, 6 digits"
+  "email": "john.doe@example.com",
+  "otp": "123456"
 }
-```
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/verify-otp \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{
-    "email": "john.doe@example.com",
-    "otp": "123456"
-  }'
 ```
 
 **Success Response (200 OK):**
@@ -90,28 +82,28 @@ curl -X POST http://localhost:8080/api/auth/verify-otp \
 }
 ```
 
+**Error Responses:**
+- `400 Bad Request`: Invalid OTP or expired
+- `500 Internal Server Error`: Server error
+
+**OTP Rules:**
+- Valid for 10 minutes
+- Max 3 attempts per OTP
+- After 3 failed attempts: 30-minute cooldown
+
 ---
 
-### 3. Resend OTP
+### 1.3 Resend OTP
 
 **Endpoint:** `POST /api/auth/resend-otp`  
-**Description:** Resend verification OTP to email.  
-**Authentication:** None
+**Auth Required:** No  
+**Description:** Resend verification OTP to email
 
 **Request Body:**
 ```json
 {
-  "email": "string, required"
+  "email": "john.doe@example.com"
 }
-```
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/resend-otp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com"
-  }'
 ```
 
 **Success Response (200 OK):**
@@ -121,31 +113,22 @@ curl -X POST http://localhost:8080/api/auth/resend-otp \
 }
 ```
 
+**Rate Limit:** 5 requests per hour per email
+
 ---
 
-### 4. Login
+### 1.4 Login
 
 **Endpoint:** `POST /api/auth/login`  
-**Description:** Authenticate user and receive JWT token in HttpOnly cookie.  
-**Authentication:** None
+**Auth Required:** No  
+**Description:** Authenticate user and receive JWT token in cookie
 
 **Request Body:**
 ```json
 {
-  "email": "string, required",
-  "password": "string, required"
+  "email": "john.doe@example.com",
+  "password": "SecurePass123!"
 }
-```
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{
-    "email": "john.doe@example.com",
-    "password": "SecurePass123!"
-  }'
 ```
 
 **Success Response (200 OK):**
@@ -159,107 +142,22 @@ curl -X POST http://localhost:8080/api/auth/login \
 }
 ```
 
----
-
-### 5. Forgot Password
-
-**Endpoint:** `POST /api/auth/forgot-password`  
-**Description:** Request password reset OTP. Sends OTP to email.  
-**Authentication:** None
-
-**Request Body:**
-```json
-{
-  "email": "string, required"
-}
+**Set-Cookie Header:**
+```
+jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Lax; Max-Age=86400; Path=/
 ```
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/forgot-password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com"
-  }'
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "message": "Password reset code has been sent to your email."
-}
-```
+**Error Responses:**
+- `401 Unauthorized`: Invalid credentials or account disabled
+- `500 Internal Server Error`: Server error
 
 ---
 
-### 6. Reset Password
-
-**Endpoint:** `POST /api/auth/reset-password`  
-**Description:** Reset password using OTP received via email.  
-**Authentication:** None
-
-**Request Body:**
-```json
-{
-  "email": "string, required",
-  "otp": "string, required, 6 digits",
-  "newPassword": "string, required, 8-120 chars"
-}
-```
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/reset-password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com",
-    "otp": "654321",
-    "newPassword": "NewSecurePass123!"
-  }'
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "message": "Password has been reset successfully. You can now login with your new password."
-}
-```
-
----
-
-### 7. Logout
-
-**Endpoint:** `POST /api/auth/logout`  
-**Description:** Logout user by clearing JWT cookie.  
-**Authentication:** Required (JWT)
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/logout \
-  -b cookies.txt \
-  -c cookies.txt
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "message": "Logged out successfully"
-}
-```
-
----
-
-### 8. Get Current User
+### 1.5 Get Current User
 
 **Endpoint:** `GET /api/auth/me`  
-**Description:** Get currently authenticated user's information.  
-**Authentication:** Required (JWT)
-
-**cURL Example:**
-```bash
-curl -X GET http://localhost:8080/api/auth/me \
-  -b cookies.txt
-```
+**Auth Required:** Yes (JWT Cookie)  
+**Description:** Get authenticated user information
 
 **Success Response (200 OK):**
 ```json
@@ -268,112 +166,231 @@ curl -X GET http://localhost:8080/api/auth/me \
   "email": "john.doe@example.com",
   "firstName": "John",
   "lastName": "Doe",
-  "message": "User details retrieved successfully"
+  "message": "User data retrieved successfully!"
 }
+```
+
+**Error Responses:**
+- `401 Unauthorized`: Not authenticated or invalid token
+
+---
+
+### 1.6 Logout
+
+**Endpoint:** `POST /api/auth/logout`  
+**Auth Required:** Yes  
+**Description:** Clear authentication and remove JWT cookie
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Logout successful!"
+}
+```
+
+**Set-Cookie Header:** (Clears cookie)
+```
+jwt=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/
 ```
 
 ---
 
-### 9. Refresh Token
+### 1.7 Refresh Token
 
 **Endpoint:** `POST /api/auth/refresh`  
-**Description:** Refresh JWT token. Returns new token in HttpOnly cookie.  
-**Authentication:** Required (JWT)
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/refresh \
-  -b cookies.txt \
-  -c cookies.txt
-```
+**Auth Required:** Yes  
+**Description:** Generate new JWT token with extended expiration
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Token refreshed successfully"
+  "message": "Token refreshed successfully!"
 }
 ```
 
+**Set-Cookie Header:** New JWT with fresh expiration
+
 ---
 
-### 10. Validate Token
+### 1.8 Validate Token
 
 **Endpoint:** `POST /api/auth/validate`  
-**Description:** Validate if current JWT token is valid.  
-**Authentication:** Required (JWT)
+**Auth Required:** Yes  
+**Description:** Check if current JWT token is valid
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/auth/validate \
-  -b cookies.txt
+**Success Response (200 OK):**
+```json
+{
+  "message": "Token is valid!"
+}
+```
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or expired token
+
+---
+
+### 1.9 Forgot Password
+
+**Endpoint:** `POST /api/auth/forgot-password`  
+**Auth Required:** No  
+**Description:** Request password reset OTP via email
+
+**Request Body:**
+```json
+{
+  "email": "john.doe@example.com"
+}
 ```
 
 **Success Response (200 OK):**
 ```json
 {
-  "valid": true,
+  "message": "Password reset instructions have been sent to your email address."
+}
+```
+
+**Rate Limit:** 5 requests per hour per email
+
+---
+
+### 1.10 Reset Password
+
+**Endpoint:** `POST /api/auth/reset-password`  
+**Auth Required:** No  
+**Description:** Reset password using OTP
+
+**Request Body:**
+```json
+{
   "email": "john.doe@example.com",
-  "message": "Token is valid"
+  "otp": "123456",
+  "newPassword": "NewSecurePass123!"
 }
-```
-
----
-
-## Document Management
-
-All document endpoints require authentication.
-
-### 1. Get Document
-
-**Endpoint:** `GET /api/documents`  
-**Description:** Get a specific document by ID.  
-**Authentication:** Required (JWT)
-
-**Query Parameters:**
-- `document_id` (required): Long - Document ID
-
-**cURL Example:**
-```bash
-curl -X GET "http://localhost:8080/api/documents?document_id=1" \
-  -b cookies.txt
 ```
 
 **Success Response (200 OK):**
 ```json
 {
-  "id": 1,
-  "title": "My Document",
-  "fileName": "My Document.docx",
-  "contentType": "text/html",
-  "content": "<div><p>Document content...</p></div>",
-  "fileSize": 1024,
-  "yjsRoomId": "doc_abc123def456",
-  "ownerEmail": "john.doe@example.com",
-  "ownerName": "John Doe",
-  "isTemplate": false,
-  "visibility": "PRIVATE",
-  "isDeleted": false,
-  "createdAt": "2026-02-09T10:00:00",
-  "updatedAt": "2026-02-09T12:00:00"
+  "message": "Password has been reset successfully! You can now login with your new password."
 }
 ```
 
+**Error Responses:**
+- `400 Bad Request`: Invalid OTP or password validation failed
+
 ---
 
-### 2. Get User Documents
+## 📄 2. Document Management
 
-**Endpoint:** `GET /api/documents/user/documents`  
-**Description:** Get paginated list of documents owned by authenticated user.  
-**Authentication:** Required (JWT)
+### 2.1 Create New Document
+
+**Endpoint:** `POST /api/documents/create`  
+**Auth Required:** Yes  
+**Description:** Create a new blank document with Yjs support
+
+**Request Body:**
+```json
+{
+  "title": "My Project Document",
+  "visibility": "PRIVATE"
+}
+```
+
+**Validation:**
+- `title`: 1-255 characters, required
+- `visibility`: PRIVATE | SHARED | PUBLIC (optional, default: PRIVATE)
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 42,
+  "title": "My Project Document",
+  "yjsRoomId": "doc_1707825600_abc123def456",
+  "ownerEmail": "john.doe@example.com",
+  "ownerId": 1,
+  "visibility": "PRIVATE",
+  "createdAt": "2026-02-13T10:30:00",
+  "updatedAt": "2026-02-13T10:30:00",
+  "isDeleted": false,
+  "fileSize": 0
+}
+```
+
+**Key Fields:**
+- `yjsRoomId`: Unique identifier for WebSocket collaboration
+- `id`: Document database ID
+- `visibility`: Access level (PRIVATE/SHARED/PUBLIC)
+
+**Error Responses:**
+- `400 Bad Request`: Validation failed
+- `401 Unauthorized`: Not authenticated
+- `500 Internal Server Error`: Server error
+
+---
+
+### 2.2 Upload Document (DOCX/PDF)
+
+**Endpoint:** `POST /api/documents/upload`  
+**Auth Required:** Yes  
+**Content-Type:** `multipart/form-data`  
+**Description:** Upload and convert DOCX/PDF to collaborative document
+
+**Request (Form Data):**
+```
+file: [Binary file]
+title: "Imported Document" (optional)
+visibility: "PRIVATE" (optional)
+```
+
+**Supported Formats:**
+- `.docx` (Microsoft Word)
+- `.pdf` (Portable Document Format)
+- Max size: 10MB
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 43,
+  "title": "Imported Document",
+  "yjsRoomId": "doc_1707825700_xyz789",
+  "ownerEmail": "john.doe@example.com",
+  "ownerId": 1,
+  "fileName": "document.docx",
+  "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "visibility": "PRIVATE",
+  "fileSize": 1024000,
+  "createdAt": "2026-02-13T10:35:00",
+  "updatedAt": "2026-02-13T10:35:00"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid file format or size exceeded
+- `401 Unauthorized`: Not authenticated
+- `413 Payload Too Large`: File size > 10MB
+
+---
+
+### 2.3 List User Documents
+
+**Endpoint:** `GET /api/documents/list`  
+**Auth Required:** Yes  
+**Description:** Get paginated list of user's accessible documents
 
 **Query Parameters:**
-- `page` (optional, default: 0): int - Page number (0-indexed)
-- `size` (optional, default: 20): int - Page size (1-100)
+```
+page: 0 (default: 0)
+size: 20 (default: 20, max: 100)
+sort: updatedAt (default: updatedAt)
+direction: desc (default: desc, options: asc|desc)
+visibility: PRIVATE (optional filter: PRIVATE|SHARED|PUBLIC)
+search: "keyword" (optional: search in title)
+```
 
-**cURL Example:**
-```bash
-curl -X GET "http://localhost:8080/api/documents/user/documents?page=0&size=20" \
-  -b cookies.txt
+**Example Request:**
+```
+GET /api/documents/list?page=0&size=20&sort=updatedAt&direction=desc&search=project
 ```
 
 **Success Response (200 OK):**
@@ -381,1098 +398,1259 @@ curl -X GET "http://localhost:8080/api/documents/user/documents?page=0&size=20" 
 {
   "content": [
     {
-      "id": 1,
-      "title": "Document 1",
-      "fileName": "doc1.docx",
-      "contentType": "text/html",
-      "fileSize": 2048,
-      "yjsRoomId": "doc_xyz789",
+      "id": 42,
+      "title": "My Project Document",
+      "yjsRoomId": "doc_1707825600_abc123def456",
       "ownerEmail": "john.doe@example.com",
-      "ownerName": "John Doe",
-      "isTemplate": false,
+      "ownerId": 1,
       "visibility": "PRIVATE",
-      "isDeleted": false,
-      "createdAt": "2026-02-09T10:00:00",
-      "updatedAt": "2026-02-09T12:00:00"
+      "createdAt": "2026-02-13T10:30:00",
+      "updatedAt": "2026-02-13T11:45:00",
+      "fileSize": 2048,
+      "isDeleted": false
     }
   ],
   "pageable": {
     "pageNumber": 0,
-    "pageSize": 20
+    "pageSize": 20,
+    "sort": {
+      "sorted": true,
+      "unsorted": false,
+      "empty": false
+    },
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
   },
-  "totalElements": 5,
+  "totalElements": 15,
   "totalPages": 1,
   "last": true,
   "first": true,
   "size": 20,
   "number": 0,
-  "numberOfElements": 5,
+  "numberOfElements": 15,
   "empty": false
 }
 ```
 
 ---
 
-### 3. Create Blank Document
+### 2.4 Get Document Details
 
-**Endpoint:** `POST /api/documents/create`  
-**Description:** Create a new blank HTML document.  
-**Authentication:** Required (JWT)
-
-**Request Body:**
-```json
-{
-  "title": "string, optional, defaults to 'Untitled Document'"
-}
-```
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/documents/create \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "title": "My New Document"
-  }'
-```
-
-**Success Response (201 CREATED):**
-```json
-{
-  "id": 2,
-  "title": "My New Document",
-  "fileName": "My New Document.docx",
-  "contentType": "text/html",
-  "fileSize": 0,
-  "yjsRoomId": "doc_newroom123",
-  "ownerEmail": "john.doe@example.com",
-  "ownerName": "John Doe",
-  "isTemplate": false,
-  "visibility": "PRIVATE",
-  "isDeleted": false,
-  "createdAt": "2026-02-09T15:00:00",
-  "updatedAt": "2026-02-09T15:00:00"
-}
-```
-
----
-
-### 4. Upload Document
-
-**Endpoint:** `POST /api/documents/upload`  
-**Description:** Upload DOCX or PDF file. Content is extracted and converted to HTML.  
-**Authentication:** Required (JWT)  
-**Content-Type:** `multipart/form-data`
-
-**Form Parameters:**
-- `file` (required): File - DOCX or PDF file (max 20MB)
-- `title` (optional): String - Document title (defaults to filename)
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/documents/upload \
-  -b cookies.txt \
-  -F "file=@/path/to/document.docx" \
-  -F "title=Uploaded Document"
-```
-
-**Success Response (201 CREATED):**
-```json
-{
-  "id": 3,
-  "title": "Uploaded Document",
-  "fileName": "document.docx",
-  "contentType": "text/html",
-  "fileSize": 15360,
-  "yjsRoomId": "doc_upload456",
-  "ownerEmail": "john.doe@example.com",
-  "ownerName": "John Doe",
-  "isTemplate": false,
-  "visibility": "PRIVATE",
-  "isDeleted": false,
-  "createdAt": "2026-02-09T15:30:00",
-  "updatedAt": "2026-02-09T15:30:00"
-}
-```
-
----
-
-### 5. Update Document Visibility
-
-**Endpoint:** `PUT /api/documents/{documentId}/visibility`  
-**Description:** Change document visibility (PRIVATE, SHARED, PUBLIC). Only document owner can update.  
-**Authentication:** Required (JWT)
+**Endpoint:** `GET /api/documents/{id}`  
+**Auth Required:** Yes  
+**Description:** Get detailed information about a specific document
 
 **Path Parameters:**
-- `documentId` (required): Long - Document ID
+- `id`: Document ID
+
+**Success Response (200 OK):**
+```json
+{
+  "id": 42,
+  "title": "My Project Document",
+  "yjsRoomId": "doc_1707825600_abc123def456",
+  "ownerEmail": "john.doe@example.com",
+  "ownerId": 1,
+  "fileName": null,
+  "contentType": "text/html",
+  "visibility": "PRIVATE",
+  "createdAt": "2026-02-13T10:30:00",
+  "updatedAt": "2026-02-13T11:45:00",
+  "fileSize": 2048,
+  "isDeleted": false
+}
+```
+
+**Error Responses:**
+- `403 Forbidden`: No permission to access document
+- `404 Not Found`: Document doesn't exist
+
+---
+
+### 2.5 Update Document
+
+**Endpoint:** `PUT /api/documents/{id}`  
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Update document metadata
 
 **Request Body:**
 ```json
 {
-  "visibility": "string, required, enum: PRIVATE|SHARED|PUBLIC"
+  "title": "Updated Title",
+  "visibility": "SHARED"
 }
-```
-
-**cURL Example:**
-```bash
-curl -X PUT http://localhost:8080/api/documents/1/visibility \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "visibility": "SHARED"
-  }'
 ```
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Document visibility updated successfully"
+  "id": 42,
+  "title": "Updated Title",
+  "visibility": "SHARED",
+  "updatedAt": "2026-02-13T12:00:00"
 }
 ```
 
 ---
 
-### 6. Delete Document
+### 2.6 Delete Document (Soft Delete)
 
-**Endpoint:** `DELETE /api/documents/{documentId}`  
-**Description:** Soft delete a document. Only document owner can delete.  
-**Authentication:** Required (JWT)
+**Endpoint:** `DELETE /api/documents/{id}`  
+**Auth Required:** Yes  
+**Permission Required:** OWNER  
+**Description:** Soft delete document (mark as deleted)
 
-**Path Parameters:**
-- `documentId` (required): Long - Document ID
+**Success Response (204 No Content)**
 
-**cURL Example:**
-```bash
-curl -X DELETE http://localhost:8080/api/documents/1 \
-  -b cookies.txt
-```
+**Error Responses:**
+- `403 Forbidden`: Only owner can delete
+- `404 Not Found`: Document doesn't exist
+
+---
+
+### 2.7 Save Yjs Snapshot (Internal)
+
+**Endpoint:** `POST /api/documents/yjs-snapshot?yjsRoomId={yjsRoomId}`  
+**Auth Required:** Internal Service  
+**Content-Type:** `application/octet-stream`  
+**Description:** Save binary Yjs CRDT snapshot (called by Node.js service)
+
+**Request Body:** Binary Yjs state
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Document deleted successfully"
+  "message": "Snapshot saved successfully"
 }
 ```
 
 ---
 
-### 7. Save Yjs Snapshot (Internal)
-
-**Endpoint:** `POST /api/documents/yjs-snapshot`  
-**Description:** Save Yjs CRDT snapshot to database. Called by Node.js yjs-service.  
-**Authentication:** None (internal service-to-service call)  
-**Content-Type:** `application/octet-stream`
-
-**Query Parameters:**
-- `yjsRoomId` (required): String - Yjs room ID from document
-
-**Request Body:**
-- Binary Yjs snapshot data (byte array)
-
-**cURL Example:**
-```bash
-# Save binary snapshot to PostgreSQL
-curl -X POST "http://localhost:8080/api/documents/yjs-snapshot?yjsRoomId=doc_abc123" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary "@snapshot.bin"
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "message": "Yjs snapshot saved successfully!"
-}
-```
-
-**Error Response (500 Internal Server Error):**
-```json
-{
-  "message": "Error: Failed to save Yjs snapshot!"
-}
-```
-
----
-
-### 8. Get Yjs Snapshot (Internal)
+### 2.8 Load Yjs Snapshot (Internal)
 
 **Endpoint:** `GET /api/documents/yjs-snapshot/{yjsRoomId}`  
-**Description:** Get Yjs CRDT snapshot from database. Called by Node.js yjs-service for document recovery.  
-**Authentication:** None (internal service-to-service call)
-
-**Path Parameters:**
-- `yjsRoomId` (required): String - Yjs room ID from document
-
-**cURL Example:**
-```bash
-# Retrieve binary snapshot from PostgreSQL
-curl -X GET http://localhost:8080/api/documents/yjs-snapshot/doc_abc123 \
-  -o snapshot.bin
-```
+**Auth Required:** Internal Service  
+**Content-Type:** `application/octet-stream`  
+**Description:** Load binary Yjs CRDT snapshot
 
 **Success Response (200 OK):**
-- **Content-Type:** `application/octet-stream`
-- **Body:** Binary Yjs snapshot data (Uint8Array)
+- Body: Binary Yjs state
+- Header: `Content-Type: application/octet-stream`
 
-**Empty Snapshot Response (204 No Content):**
-- Returned when document exists but has no snapshot yet (new document)
-- Empty body
-
-**Error Response (404 Not Found):**
-```json
-{
-  "message": "Error: Document not found or has been deleted for room ID: doc_abc123"
-}
-```
-
-**Error Response (500 Internal Server Error):**
-```json
-{
-  "message": "Error: Failed to retrieve snapshot!"
-}
-```
+**Response (404 No Content):** If no snapshot exists
 
 ---
 
-## Collaborator Management
+## 🔄 3. Real-Time Collaboration (WebSocket)
 
-Document collaboration is managed through Role-Based Access Control (RBAC) with three permission levels:
-- **OWNER**: Full control (edit, delete, share, manage permissions)
-- **EDITOR**: Can edit document content
-- **VIEWER**: Read-only access
+### 3.1 WebSocket Connection
 
-### 1. Add Collaborator
+**Endpoint:** `ws://localhost:3000/ws/yjs/{yjsRoomId}`  
+**Auth Required:** Yes (JWT in query param or header)  
+**Protocol:** Yjs CRDT over WebSocket  
+**Description:** Real-time document collaboration
 
-**Endpoint:** `POST /api/documents/{documentId}/collaborators`  
-**Description:** Grant access to a document for another user. Only OWNER can add collaborators.  
-**Authentication:** Required (JWT)
+**Connection Methods:**
 
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-
-**Request Body:**
-```json
-{
-  "userId": "number, required",
-  "role": "string, required (OWNER|EDITOR|VIEWER)",
-  "expiresInDays": "number, optional (null = permanent)"
-}
+**Option 1: Query Parameter**
+```javascript
+const jwt = getCookie('jwt');
+const ws = new WebSocket(
+  `ws://localhost:3000/ws/yjs/doc_1707825600_abc123?token=${jwt}`
+);
 ```
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/documents/1/collaborators \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "userId": 2,
-    "role": "EDITOR",
-    "expiresInDays": 30
-  }'
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "message": "Collaborator added successfully!"
-}
-```
-
-**Error Response (403 Forbidden):**
-```json
-{
-  "timestamp": "2026-02-10T14:15:00",
-  "status": 403,
-  "error": "Permission Denied",
-  "message": "Only document owners can grant permissions",
-  "path": "/api/documents/1/collaborators"
-}
-```
-
-**Error Response (409 Conflict - Duplicate):**
-```json
-{
-  "timestamp": "2026-02-10T14:15:00",
-  "status": 409,
-  "error": "Duplicate Permission",
-  "message": "User already has permission for this document. Use update instead.",
-  "path": "/api/documents/1/collaborators"
-}
-```
-
----
-
-### 2. List Collaborators
-
-**Endpoint:** `GET /api/documents/{documentId}/collaborators`  
-**Description:** Get all collaborators for a document. Any user with access can view the list.  
-**Authentication:** Required (JWT)
-
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-
-**cURL Example:**
-```bash
-curl -X GET http://localhost:8080/api/documents/1/collaborators \
-  -H "Content-Type: application/json" \
-  -b cookies.txt
-```
-
-**Success Response (200 OK):**
-```json
-[
-  {
-    "id": 1,
-    "userId": 1,
-    "userEmail": "owner@example.com",
-    "userName": "John Doe",
-    "role": "OWNER",
-    "grantedAt": "2026-02-01T10:00:00",
-    "grantedByName": "John Doe",
-    "expiresAt": null,
-    "isExpired": false
-  },
-  {
-    "id": 2,
-    "userId": 2,
-    "userEmail": "editor@example.com",
-    "userName": "Jane Smith",
-    "role": "EDITOR",
-    "grantedAt": "2026-02-10T14:00:00",
-    "grantedByName": "John Doe",
-    "expiresAt": "2026-03-12T14:00:00",
-    "isExpired": false
+**Option 2: Authorization Header**
+```javascript
+const ws = new WebSocket('ws://localhost:3000/ws/yjs/doc_1707825600_abc123', {
+  headers: {
+    'Authorization': `Bearer ${jwt}`
   }
-]
+});
+```
+
+**Connection Success:**
+- Server sends: `MESSAGE_SYNC_STEP1` (initial document state)
+- Client sends: `MESSAGE_SYNC_STEP2` (client state)
+- Server sends: `MESSAGE_SYNC_STEP2` (state diff)
+
+**Message Types:**
+- `MESSAGE_SYNC` (0): Document synchronization
+- `MESSAGE_AWARENESS` (1): User presence/cursor
+- `MESSAGE_AUTH` (2): Authentication (internal)
+
+**Heartbeat:**
+- Ping every 30 seconds
+- Pong response required
+- Timeout: 60 seconds
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or missing JWT
+- `403 Forbidden`: No permission to access document
+- `404 Not Found`: Document doesn't exist
+
+---
+
+### 3.2 TipTap Editor Integration
+
+**Example Implementation:**
+```javascript
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+
+// Create Yjs document
+const ydoc = new Y.Doc();
+
+// Get JWT from cookie
+const jwt = document.cookie
+  .split('; ')
+  .find(row => row.startsWith('jwt='))
+  ?.split('=')[1];
+
+// Connect to WebSocket provider
+const provider = new WebsocketProvider(
+  'ws://localhost:3000/ws/yjs',
+  documentInfo.yjsRoomId,
+  ydoc,
+  {
+    params: { token: jwt }
+  }
+);
+
+// Initialize TipTap editor
+const editor = new Editor({
+  element: document.querySelector('#editor'),
+  extensions: [
+    StarterKit.configure({
+      history: false, // Yjs handles history
+    }),
+    Collaboration.configure({
+      document: ydoc,
+    }),
+    CollaborationCursor.configure({
+      provider: provider,
+      user: {
+        name: currentUser.firstName + ' ' + currentUser.lastName,
+        color: generateUserColor(currentUser.id),
+      },
+    }),
+  ],
+  content: '', // Synced from Yjs
+});
+
+// Handle connection status
+provider.on('status', event => {
+  console.log('WebSocket status:', event.status); // connected | disconnected
+});
+
+// Handle sync status
+provider.on('sync', isSynced => {
+  console.log('Document synced:', isSynced);
+});
 ```
 
 ---
 
-### 3. Update Collaborator Role
+### 3.3 Active Users API
 
-**Endpoint:** `PUT /api/documents/{documentId}/collaborators/{userId}`  
-**Description:** Update a collaborator's role. Only OWNER can update roles.  
-**Authentication:** Required (JWT)
-
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-- `userId` (required): Long - ID of the user to update
-
-**Request Body:**
-```json
-{
-  "role": "string, required (OWNER|EDITOR|VIEWER)"
-}
-```
-
-**cURL Example:**
-```bash
-curl -X PUT http://localhost:8080/api/documents/1/collaborators/2 \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "role": "VIEWER"
-  }'
-```
+**Endpoint:** `GET http://localhost:3000/api/documents/{yjsRoomId}/users`  
+**Auth Required:** No (public stats)  
+**Description:** Get list of currently connected users
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Collaborator role updated successfully!"
-}
-```
-
-**Error Response (403 Forbidden):**
-```json
-{
-  "timestamp": "2026-02-10T14:15:00",
-  "status": 403,
-  "error": "Permission Denied",
-  "message": "Cannot change role of the last owner. Add another owner first.",
-  "path": "/api/documents/1/collaborators/1"
+  "documentId": "doc_1707825600_abc123",
+  "activeUsers": 3,
+  "users": [
+    {
+      "userId": 1,
+      "email": "john.doe@example.com",
+      "name": "John Doe",
+      "connectedAt": "2026-02-13T10:30:00"
+    },
+    {
+      "userId": 2,
+      "email": "jane.smith@example.com",
+      "name": "Jane Smith",
+      "connectedAt": "2026-02-13T10:32:00"
+    }
+  ]
 }
 ```
 
 ---
 
-### 4. Remove Collaborator
+### 3.4 Service Health Check
 
-**Endpoint:** `DELETE /api/documents/{documentId}/collaborators/{userId}`  
-**Description:** Revoke a user's access to a document. Only OWNER can remove collaborators.  
-**Authentication:** Required (JWT)
-
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-- `userId` (required): Long - ID of the user to remove
-
-**cURL Example:**
-```bash
-curl -X DELETE http://localhost:8080/api/documents/1/collaborators/2 \
-  -H "Content-Type: application/json" \
-  -b cookies.txt
-```
+**Endpoint:** `GET http://localhost:3000/health`  
+**Auth Required:** No  
+**Description:** Check Yjs service health and statistics
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Collaborator removed successfully!"
-}
-```
-
-**Error Response (403 Forbidden - Last Owner):**
-```json
-{
-  "timestamp": "2026-02-10T14:15:00",
-  "status": 403,
-  "error": "Permission Denied",
-  "message": "Cannot remove the last owner. Transfer ownership first or delete the document.",
-  "path": "/api/documents/1/collaborators/1"
-}
-```
-
-**Error Response (404 Not Found):**
-```json
-{
-  "timestamp": "2026-02-10T14:15:00",
-  "status": 404,
-  "error": "Resource Not Found",
-  "message": "Permission not found",
-  "path": "/api/documents/1/collaborators/999"
+  "status": "healthy",
+  "uptime": 86400,
+  "activeDocuments": 15,
+  "activeConnections": 42,
+  "memoryUsage": {
+    "heapUsed": 125829120,
+    "heapTotal": 268435456
+  },
+  "timestamp": "2026-02-13T12:00:00"
 }
 ```
 
 ---
 
-## Document Versioning
+## 📚 4. Document Versioning
 
-Document versioning allows users to create snapshots of document state, view version history, restore previous versions, and manage version storage.
-
-### 1. Create Version
+### 4.1 Create Version
 
 **Endpoint:** `POST /api/documents/{documentId}/versions`  
-**Description:** Create a new version snapshot of the current document state.  
-**Authentication:** Required (JWT)  
-**Permission Required:** EDITOR or higher
-
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Create a manual snapshot/checkpoint of current document state
 
 **Request Body:**
 ```json
 {
-  "versionName": "string, optional, max 255 chars",
-  "changeNotes": "string, optional, max 5000 chars"
+  "versionName": "Final Draft",
+  "comment": "Completed all revisions, ready for review"
 }
 ```
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/documents/1/versions \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "versionName": "Final Draft",
-    "changeNotes": "Completed all sections and reviewed content"
-  }'
-```
+**Validation:**
+- `versionName`: 1-100 characters, required
+- `comment`: Max 500 characters, optional
 
 **Success Response (201 Created):**
 ```json
 {
-  "id": 42,
-  "documentId": 1,
+  "id": 5,
+  "documentId": 42,
   "versionNumber": 5,
   "versionName": "Final Draft",
-  "changeNotes": "Completed all sections and reviewed content",
-  "createdByUserId": 1,
-  "createdByName": "John Doe",
-  "createdByEmail": "john@example.com",
-  "createdAt": "2026-02-12T10:30:00",
-  "sizeBytes": 45678,
-  "snapshotHash": "a3f2b1...",
-  "versionIdentifier": "v5",
-  "displayName": "Final Draft (v5)"
+  "comment": "Completed all revisions, ready for review",
+  "sizeBytes": 2048,
+  "createdBy": "John Doe",
+  "createdById": 1,
+  "createdAt": "2026-02-13T12:00:00"
 }
 ```
 
-**Error Response (403 Forbidden):**
-```json
-{
-  "timestamp": "2026-02-12T10:30:00",
-  "status": 403,
-  "error": "Permission Denied",
-  "message": "You must have EDITOR permission to create versions",
-  "path": "/api/documents/1/versions"
-}
-```
-
-**Error Response (409 Conflict - Limit Exceeded):**
-```json
-{
-  "timestamp": "2026-02-12T10:30:00",
-  "status": 409,
-  "error": "Version Limit Exceeded",
-  "message": "Document has reached maximum version limit of 100. Please delete old versions first.",
-  "path": "/api/documents/1/versions"
-}
-```
+**Error Responses:**
+- `400 Bad Request`: Validation failed or version limit reached
+- `403 Forbidden`: No edit permission
+- `404 Not Found`: Document doesn't exist
 
 ---
 
-### 2. List Document Versions
+### 4.2 List Versions
 
 **Endpoint:** `GET /api/documents/{documentId}/versions`  
-**Description:** List all versions for a document with metadata.  
-**Authentication:** Required (JWT)  
-**Permission Required:** VIEWER or higher
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get all versions of a document
 
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-
-**Query Parameters:**
-- `page` (optional): int - Page number (0-based), default: 0
-- `size` (optional): int - Page size, default: 20
-- Set `page=-1` to get all versions without pagination
-
-**cURL Example:**
-```bash
-# Get all versions
-curl -X GET http://localhost:8080/api/documents/1/versions \
-  -b cookies.txt
-
-# Get paginated versions
-curl -X GET "http://localhost:8080/api/documents/1/versions?page=0&size=10" \
-  -b cookies.txt
-```
-
-**Success Response (200 OK - All Versions):**
-```json
-[
-  {
-    "id": 45,
-    "documentId": 1,
-    "versionNumber": 5,
-    "versionName": "Final Draft",
-    "changeNotes": "Completed all sections",
-    "createdByUserId": 1,
-    "createdByName": "John Doe",
-    "createdByEmail": "john@example.com",
-    "createdAt": "2026-02-12T10:30:00",
-    "sizeBytes": 45678,
-    "snapshotHash": "a3f2b1...",
-    "versionIdentifier": "v5",
-    "displayName": "Final Draft (v5)"
-  },
-  {
-    "id": 44,
-    "documentId": 1,
-    "versionNumber": 4,
-    "versionName": null,
-    "changeNotes": null,
-    "createdByUserId": 2,
-    "createdByName": "Jane Smith",
-    "createdByEmail": "jane@example.com",
-    "createdAt": "2026-02-11T15:20:00",
-    "sizeBytes": 42000,
-    "snapshotHash": "b4e1c2...",
-    "versionIdentifier": "v4",
-    "displayName": "Version 4"
-  }
-]
-```
-
-**Success Response (200 OK - Paginated):**
+**Success Response (200 OK):**
 ```json
 {
-  "content": [...],
-  "pageable": {
-    "pageNumber": 0,
-    "pageSize": 10
-  },
-  "totalElements": 25,
-  "totalPages": 3,
-  "last": false,
-  "first": true
+  "documentId": 42,
+  "totalVersions": 5,
+  "versions": [
+    {
+      "id": 5,
+      "versionNumber": 5,
+      "versionName": "Final Draft",
+      "comment": "Completed all revisions",
+      "sizeBytes": 2048,
+      "createdBy": "John Doe",
+      "createdById": 1,
+      "createdAt": "2026-02-13T12:00:00"
+    },
+    {
+      "id": 4,
+      "versionNumber": 4,
+      "versionName": "Second Review",
+      "sizeBytes": 1920,
+      "createdBy": "Jane Smith",
+      "createdById": 2,
+      "createdAt": "2026-02-12T15:30:00"
+    }
+  ]
 }
 ```
 
 ---
 
-### 3. Get Version Details
+### 4.3 Get Version Content
 
 **Endpoint:** `GET /api/versions/{versionId}`  
-**Description:** Get a specific version with its content snapshot.  
-**Authentication:** Required (JWT)  
-**Permission Required:** VIEWER on the document
-
-**Path Parameters:**
-- `versionId` (required): Long - ID of the version
-
-**cURL Example:**
-```bash
-curl -X GET http://localhost:8080/api/versions/42 \
-  -b cookies.txt
-```
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get specific version with content
 
 **Success Response (200 OK):**
 ```json
 {
-  "versionId": 42,
+  "id": 5,
   "versionNumber": 5,
   "versionName": "Final Draft",
-  "contentSnapshot": "<html>Document content...</html>",
-  "yjsSnapshot": "<base64-encoded-binary-data>",
-  "sizeBytes": 45678,
-  "snapshotHash": "a3f2b1c4d5..."
+  "comment": "Completed all revisions",
+  "content": "<p>Document content here...</p>",
+  "yjsSnapshot": "[Base64 encoded binary]",
+  "sizeBytes": 2048,
+  "createdBy": "John Doe",
+  "createdAt": "2026-02-13T12:00:00"
 }
 ```
 
-**Note:** The `yjsSnapshot` field contains the binary Yjs CRDT snapshot, which can be used to perfectly restore the collaborative editing state.
+**Frontend Usage:**
+```javascript
+// Load version in read-only mode
+const version = await fetch(`/api/versions/${versionId}`).then(r => r.json());
+
+// Display in editor (read-only)
+editor.setOptions({ editable: false });
+editor.commands.setContent(version.content);
+```
 
 ---
 
-### 4. Restore Version
+### 4.4 Restore Version
 
 **Endpoint:** `POST /api/versions/{versionId}/restore`  
-**Description:** Restore a document to a previous version. This creates a NEW version with the old content rather than overwriting history.  
-**Authentication:** Required (JWT)  
-**Permission Required:** EDITOR or higher
-
-**Path Parameters:**
-- `versionId` (required): Long - ID of the version to restore
-
-**cURL Example:**
-```bash
-curl -X POST http://localhost:8080/api/versions/42/restore \
-  -b cookies.txt
-```
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Restore document to a previous version (creates new version)
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Version restored successfully",
-  "newVersion": {
-    "id": 46,
-    "documentId": 1,
-    "versionNumber": 6,
-    "versionName": "Restored from Final Draft (v5)",
-    "changeNotes": "Restored from version 5 created by john@example.com on 2026-02-12T10:30:00",
-    "createdByUserId": 1,
-    "createdByName": "John Doe",
-    "createdByEmail": "john@example.com",
-    "createdAt": "2026-02-12T14:00:00",
-    "sizeBytes": 45678,
-    "snapshotHash": "a3f2b1...",
-    "versionIdentifier": "v6",
-    "displayName": "Restored from Final Draft (v5) (v6)"
+  "message": "Document restored to version 3",
+  "newVersionId": 6,
+  "newVersionNumber": 6,
+  "restoredFromVersion": 3
+}
+```
+
+**Warning:** This creates a new version (doesn't delete history)
+
+---
+
+### 4.5 Delete Version
+
+**Endpoint:** `DELETE /api/versions/{versionId}`  
+**Auth Required:** Yes  
+**Permission Required:** OWNER  
+**Description:** Delete a specific version (cannot delete latest)
+
+**Success Response (204 No Content)**
+
+**Error Responses:**
+- `400 Bad Request`: Cannot delete latest version
+- `403 Forbidden`: Only owner can delete
+- `404 Not Found`: Version doesn't exist
+
+---
+
+### 4.6 Get Version Statistics
+
+**Endpoint:** `GET /api/documents/{documentId}/versions/stats`  
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get version count and storage statistics
+
+**Success Response (200 OK):**
+```json
+{
+  "documentId": 42,
+  "totalVersions": 5,
+  "totalSizeBytes": 10240,
+  "totalSizeFormatted": "10.0 KB",
+  "oldestVersion": {
+    "versionNumber": 1,
+    "createdAt": "2026-02-10T09:00:00"
+  },
+  "latestVersion": {
+    "versionNumber": 5,
+    "createdAt": "2026-02-13T12:00:00"
   }
 }
 ```
 
-**Key Behavior:**
-- The current document content is replaced with the old version's content
-- A new version is created to record this restoration
-- The Yjs service is updated with the restored snapshot
-- Version history is preserved (no versions are deleted)
+---
+
+## 👥 5. Collaborator Management
+
+### 5.1 Add Collaborator
+
+**Endpoint:** `POST /api/documents/{documentId}/collaborators`  
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Grant access to another user
+
+**Request Body:**
+```json
+{
+  "userId": 2,
+  "role": "EDITOR",
+  "expiresInDays": 30
+}
+```
+
+**Roles:**
+- `VIEWER`: Read-only access
+- `EDITOR`: Can edit document
+- `OWNER`: Full control (transfer not allowed via this endpoint)
+
+**Validation:**
+- `userId`: Required, must exist
+- `role`: Required, VIEWER | EDITOR
+- `expiresInDays`: Optional, 1-365 days
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 10,
+  "documentId": 42,
+  "userId": 2,
+  "userEmail": "jane.smith@example.com",
+  "userName": "Jane Smith",
+  "role": "EDITOR",
+  "grantedBy": "John Doe",
+  "grantedAt": "2026-02-13T12:00:00",
+  "expiresAt": "2026-03-15T12:00:00"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Validation failed or user already has access
+- `403 Forbidden`: No permission to share
+- `404 Not Found`: User or document not found
 
 ---
 
-### 5. Delete Version
+### 5.2 List Collaborators
 
-**Endpoint:** `DELETE /api/versions/{versionId}`  
-**Description:** Delete a specific version. Only document owners can delete versions. Cannot delete if it's the only version.  
-**Authentication:** Required (JWT)  
-**Permission Required:** OWNER
+**Endpoint:** `GET /api/documents/{documentId}/collaborators`  
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get all users with access to document
 
-**Path Parameters:**
-- `versionId` (required): Long - ID of the version to delete
+**Success Response (200 OK):**
+```json
+{
+  "documentId": 42,
+  "totalCollaborators": 3,
+  "collaborators": [
+    {
+      "id": 1,
+      "userId": 1,
+      "userEmail": "john.doe@example.com",
+      "userName": "John Doe",
+      "role": "OWNER",
+      "grantedAt": "2026-02-10T09:00:00",
+      "expiresAt": null
+    },
+    {
+      "id": 10,
+      "userId": 2,
+      "userEmail": "jane.smith@example.com",
+      "userName": "Jane Smith",
+      "role": "EDITOR",
+      "grantedBy": "John Doe",
+      "grantedAt": "2026-02-13T12:00:00",
+      "expiresAt": "2026-03-15T12:00:00"
+    }
+  ]
+}
+```
 
-**cURL Example:**
-```bash
-curl -X DELETE http://localhost:8080/api/versions/42 \
-  -b cookies.txt
+---
+
+### 5.3 Update Collaborator Role
+
+**Endpoint:** `PUT /api/documents/{documentId}/collaborators/{userId}`  
+**Auth Required:** Yes  
+**Permission Required:** OWNER  
+**Description:** Change collaborator's role or expiration
+
+**Request Body:**
+```json
+{
+  "role": "VIEWER",
+  "expiresInDays": 60
+}
 ```
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Version deleted successfully"
-}
-```
-
-**Error Response (400 Bad Request - Last Version):**
-```json
-{
-  "timestamp": "2026-02-12T14:15:00",
-  "status": 400,
-  "error": "Invalid Argument",
-  "message": "Cannot delete the only version. At least one version must remain for audit purposes.",
-  "path": "/api/versions/42"
-}
-```
-
-**Error Response (403 Forbidden):**
-```json
-{
-  "timestamp": "2026-02-12T14:15:00",
-  "status": 403,
-  "error": "Permission Denied",
-  "message": "Only document owners can delete versions",
-  "path": "/api/versions/42"
+  "id": 10,
+  "role": "VIEWER",
+  "expiresAt": "2026-04-13T12:00:00",
+  "updatedAt": "2026-02-13T12:30:00"
 }
 ```
 
 ---
 
-### 6. Cleanup Old Versions
+### 5.4 Remove Collaborator
 
-**Endpoint:** `POST /api/documents/{documentId}/versions/cleanup`  
-**Description:** Delete old versions keeping only N most recent. Useful for storage management.  
-**Authentication:** Required (JWT)  
-**Permission Required:** OWNER
+**Endpoint:** `DELETE /api/documents/{documentId}/collaborators/{userId}`  
+**Auth Required:** Yes  
+**Permission Required:** OWNER  
+**Description:** Revoke user's access to document
 
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
+**Success Response (204 No Content)**
+
+**Error Responses:**
+- `400 Bad Request`: Cannot remove last owner
+- `403 Forbidden`: Only owner can remove
+- `404 Not Found`: Collaborator not found
+
+---
+
+## 🔗 6. Document Sharing
+
+### 6.1 Share Links
+
+#### 6.1.1 Create Share Link
+
+**Endpoint:** `POST /api/documents/{documentId}/share-links`  
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Generate shareable URL with customizable access
+
+**Request Body:**
+```json
+{
+  "role": "VIEWER",
+  "expiresInDays": 7,
+  "maxUses": 10,
+  "requiresAuth": false,
+  "description": "Public view link for stakeholders"
+}
+```
+
+**Validation:**
+- `role`: VIEWER | EDITOR (required, cannot be OWNER)
+- `expiresInDays`: 1-365 days (optional, null = no expiration)
+- `maxUses`: 1-1000 (optional, null = unlimited)
+- `requiresAuth`: boolean (default: false)
+- `description`: Max 500 chars (optional)
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 5,
+  "token": "abc123xyz456def789ghi012",
+  "shareUrl": "http://localhost:3000/share/abc123xyz456def789ghi012",
+  "role": "VIEWER",
+  "createdByName": "John Doe",
+  "createdById": 1,
+  "createdAt": "2026-02-13T12:00:00",
+  "expiresAt": "2026-02-20T12:00:00",
+  "maxUses": 10,
+  "currentUses": 0,
+  "remainingUses": 10,
+  "isActive": true,
+  "requiresAuth": false,
+  "description": "Public view link for stakeholders",
+  "isExpired": false,
+  "isUsageLimitReached": false,
+  "isValid": true
+}
+```
+
+**Frontend Usage:**
+```javascript
+// Share via email, Slack, etc.
+const shareUrl = response.shareUrl;
+navigator.clipboard.writeText(shareUrl);
+```
+
+---
+
+#### 6.1.2 List Share Links
+
+**Endpoint:** `GET /api/documents/{documentId}/share-links?activeOnly=true`  
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get all share links for document
 
 **Query Parameters:**
-- `keepCount` (optional): int - Number of recent versions to keep, default: 10
-
-**cURL Example:**
-```bash
-curl -X POST "http://localhost:8080/api/documents/1/versions/cleanup?keepCount=10" \
-  -b cookies.txt
-```
+- `activeOnly`: true | false (default: false)
 
 **Success Response (200 OK):**
 ```json
 {
-  "message": "Cleanup completed successfully",
-  "deletedCount": 15,
-  "keptCount": 10
-}
-```
-
-**Use Cases:**
-- Storage quota management
-- Automated cleanup jobs
-- Maintaining only recent versions
-
----
-
-### 7. Get Version Statistics
-
-**Endpoint:** `GET /api/documents/{documentId}/versions/stats`  
-**Description:** Get version count and storage usage for a document.  
-**Authentication:** Required (JWT)  
-**Permission Required:** VIEWER or higher
-
-**Path Parameters:**
-- `documentId` (required): Long - ID of the document
-
-**cURL Example:**
-```bash
-curl -X GET http://localhost:8080/api/documents/1/versions/stats \
-  -b cookies.txt
-```
-
-**Success Response (200 OK):**
-```json
-{
-  "versionCount": 25,
-  "totalStorageBytes": 1245678,
-  "formattedStorage": "1.19 MB"
+  "documentId": 42,
+  "totalLinks": 3,
+  "links": [
+    {
+      "id": 5,
+      "token": "abc123xyz456",
+      "shareUrl": "http://localhost:3000/share/abc123xyz456",
+      "role": "VIEWER",
+      "createdByName": "John Doe",
+      "createdAt": "2026-02-13T12:00:00",
+      "expiresAt": "2026-02-20T12:00:00",
+      "currentUses": 3,
+      "remainingUses": 7,
+      "isActive": true,
+      "isValid": true
+    }
+  ]
 }
 ```
 
 ---
 
-## Error Responses
+#### 6.1.3 Validate Share Link (Public)
+
+**Endpoint:** `GET /api/share/{token}/validate`  
+**Auth Required:** No (Public endpoint)  
+**Description:** Check if share link is valid without granting access
+
+**Success Response (200 OK):**
+```json
+{
+  "token": "abc123xyz456",
+  "role": "VIEWER",
+  "requiresAuth": false,
+  "isValid": true,
+  "isExpired": false,
+  "isUsageLimitReached": false,
+  "expiresAt": "2026-02-20T12:00:00",
+  "createdByName": "John Doe",
+  "description": "Public view link"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Link expired or usage limit reached
+- `404 Not Found`: Link doesn't exist
+
+---
+
+#### 6.1.4 Access Via Share Link
+
+**Endpoint:** `POST /api/share/{token}/access`  
+**Auth Required:** Yes  
+**Description:** Grant permanent access using share link (Force Registration)
+
+**Flow:**
+1. Unauthenticated user clicks link
+2. Frontend validates link (`GET /api/share/{token}/validate`)
+3. Frontend shows login/register page
+4. After authentication, call this endpoint
+5. Backend creates permanent DocumentPermission
+6. Returns document details
+
+**Success Response (200 OK):**
+```json
+{
+  "documentId": 42,
+  "title": "My Project Document",
+  "yjsRoomId": "doc_1707825600_abc123",
+  "role": "VIEWER",
+  "isAnonymous": false,
+  "hasPermissionGranted": true,
+  "message": "Access granted! You can now collaborate on this document",
+  "ownerName": "John Doe",
+  "accessExpiresAt": null
+}
+```
+
+**Error Responses:**
+- `401 Unauthorized`: User must login/register
+  ```json
+  {
+    "error": "Authentication required",
+    "message": "Please login or register to access this document",
+    "requiresAuth": true,
+    "loginUrl": "/api/auth/login",
+    "registerUrl": "/api/auth/register"
+  }
+  ```
+
+**Frontend Implementation:**
+```javascript
+// Step 1: Validate link
+const validation = await fetch(`/api/share/${token}/validate`);
+const linkInfo = await validation.json();
+
+if (!linkInfo.isValid) {
+  showError('This link is expired or invalid');
+  return;
+}
+
+// Step 2: Check if user is logged in
+if (!isLoggedIn()) {
+  showLoginModal({
+    documentTitle: linkInfo.documentTitle,
+    owner: linkInfo.createdByName
+  });
+  return;
+}
+
+// Step 3: Grant access
+const access = await fetch(`/api/share/${token}/access`, {
+  method: 'POST',
+  credentials: 'include'
+});
+
+const docInfo = await access.json();
+
+// Step 4: Redirect to editor
+window.location.href = `/document/${docInfo.documentId}`;
+```
+
+---
+
+#### 6.1.5 Revoke Share Link
+
+**Endpoint:** `POST /api/share-links/{linkId}/revoke`  
+**Auth Required:** Yes  
+**Permission Required:** Link creator or OWNER  
+**Description:** Deactivate share link (soft delete for audit trail)
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Share link revoked successfully"
+}
+```
+
+---
+
+#### 6.1.6 Delete Share Link
+
+**Endpoint:** `DELETE /api/share-links/{linkId}`  
+**Auth Required:** Yes  
+**Permission Required:** Link creator or OWNER  
+**Description:** Permanently delete share link
+
+**Success Response (204 No Content)**
+
+---
+
+### 6.2 Email Invitations
+
+#### 6.2.1 Send Invitation
+
+**Endpoint:** `POST /api/documents/{documentId}/invitations`  
+**Auth Required:** Yes  
+**Permission Required:** EDITOR or OWNER  
+**Description:** Send collaboration invitation via email
+
+**Request Body:**
+```json
+{
+  "email": "colleague@example.com",
+  "role": "EDITOR",
+  "message": "Let's collaborate on this document!"
+}
+```
+
+**Validation:**
+- `email`: Valid email, required
+- `role`: VIEWER | EDITOR (required, cannot be OWNER)
+- `message`: Max 1000 chars (optional)
+
+**Success Response (201 Created):**
+```json
+{
+  "id": 15,
+  "documentId": 42,
+  "invitedEmail": "colleague@example.com",
+  "invitedUserName": "Alice Johnson",
+  "role": "EDITOR",
+  "invitedBy": "John Doe",
+  "invitedById": 1,
+  "invitedAt": "2026-02-13T12:00:00",
+  "expiresAt": "2026-02-20T12:00:00",
+  "status": "PENDING",
+  "message": "Let's collaborate on this document!",
+  "token": "inv_abc123xyz456"
+}
+```
+
+**Email Sent:**
+```
+Subject: John Doe invited you to collaborate on "My Project Document"
+
+Hello,
+
+John Doe has invited you to collaborate on the document "My Project Document" with EDITOR access.
+
+Message: Let's collaborate on this document!
+
+To accept this invitation:
+http://localhost:3000/invitations/accept/inv_abc123xyz456
+
+To decline:
+http://localhost:3000/invitations/decline/inv_abc123xyz456
+
+This invitation expires on February 20, 2026.
+
+Best regards,
+Collab-Docs Team
+```
+
+**Error Responses:**
+- `400 Bad Request`: Duplicate invitation or validation failed
+- `403 Forbidden`: No permission to share
+
+---
+
+#### 6.2.2 List Document Invitations
+
+**Endpoint:** `GET /api/documents/{documentId}/invitations`  
+**Auth Required:** Yes  
+**Permission Required:** VIEWER or higher  
+**Description:** Get all invitations for document
+
+**Success Response (200 OK):**
+```json
+{
+  "documentId": 42,
+  "totalInvitations": 2,
+  "invitations": [
+    {
+      "id": 15,
+      "invitedEmail": "colleague@example.com",
+      "role": "EDITOR",
+      "invitedBy": "John Doe",
+      "invitedAt": "2026-02-13T12:00:00",
+      "status": "PENDING",
+      "expiresAt": "2026-02-20T12:00:00"
+    },
+    {
+      "id": 14,
+      "invitedEmail": "friend@example.com",
+      "role": "VIEWER",
+      "invitedBy": "John Doe",
+      "invitedAt": "2026-02-12T10:00:00",
+      "respondedAt": "2026-02-12T11:30:00",
+      "status": "ACCEPTED"
+    }
+  ]
+}
+```
+
+---
+
+#### 6.2.3 Get My Pending Invitations
+
+**Endpoint:** `GET /api/invitations/pending`  
+**Auth Required:** Yes  
+**Description:** Get all pending invitations for current user
+
+**Success Response (200 OK):**
+```json
+{
+  "totalInvitations": 1,
+  "invitations": [
+    {
+      "id": 15,
+      "documentId": 42,
+      "documentTitle": "My Project Document",
+      "role": "EDITOR",
+      "invitedBy": "John Doe",
+      "invitedAt": "2026-02-13T12:00:00",
+      "expiresAt": "2026-02-20T12:00:00",
+      "message": "Let's collaborate!",
+      "token": "inv_abc123xyz456"
+    }
+  ]
+}
+```
+
+---
+
+#### 6.2.4 Accept Invitation
+
+**Endpoint:** `POST /api/invitations/{token}/accept`  
+**Auth Required:** Yes  
+**Description:** Accept invitation and gain document access
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Invitation accepted successfully",
+  "documentId": 42,
+  "documentTitle": "My Project Document",
+  "role": "EDITOR",
+  "yjsRoomId": "doc_1707825600_abc123"
+}
+```
+
+**Side Effects:**
+- Creates DocumentPermission record
+- Updates invitation status to ACCEPTED
+- User can now access document
+
+---
+
+#### 6.2.5 Decline Invitation
+
+**Endpoint:** `POST /api/invitations/{token}/decline`  
+**Auth Required:** Yes  
+**Description:** Decline invitation
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Invitation declined"
+}
+```
+
+---
+
+#### 6.2.6 Revoke Invitation
+
+**Endpoint:** `DELETE /api/invitations/{invitationId}`  
+**Auth Required:** Yes  
+**Permission Required:** Sender or OWNER  
+**Description:** Cancel pending invitation
+
+**Success Response (204 No Content)**
+
+---
+
+## ⚠️ 7. Error Handling
+
+### 7.1 Standard Error Response
 
 All error responses follow this format:
 
-**400 Bad Request:**
 ```json
 {
-  "message": "Error: Validation failed / Invalid input"
+  "timestamp": "2026-02-13T12:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed: Title must be between 1 and 255 characters",
+  "path": "/api/documents/create"
 }
 ```
 
-**401 Unauthorized:**
+### 7.2 HTTP Status Codes
+
+| Code | Meaning | Usage |
+|------|---------|-------|
+| 200 | OK | Successful GET/PUT/POST request |
+| 201 | Created | Resource created successfully |
+| 204 | No Content | Successful DELETE request |
+| 400 | Bad Request | Validation error or invalid input |
+| 401 | Unauthorized | Missing or invalid authentication |
+| 403 | Forbidden | Authenticated but no permission |
+| 404 | Not Found | Resource doesn't exist |
+| 409 | Conflict | Duplicate resource (e.g., email exists) |
+| 413 | Payload Too Large | File size exceeds limit |
+| 429 | Too Many Requests | Rate limit exceeded |
+| 500 | Internal Server Error | Server error |
+
+### 7.3 Validation Errors
+
 ```json
 {
-  "message": "Error: Unauthorized. Please login."
+  "timestamp": "2026-02-13T12:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    },
+    {
+      "field": "password",
+      "message": "Password must be at least 8 characters"
+    }
+  ],
+  "path": "/api/auth/register"
 }
 ```
 
-**403 Forbidden:**
+### 7.4 Permission Errors
+
 ```json
 {
-  "message": "Error: Access denied. You don't have permission to access this resource."
-}
-```
-
-**404 Not Found:**
-```json
-{
-  "message": "Error: Resource not found"
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "message": "Error: Internal server error"
-}
-```
-
-### Validation Errors
-
-**422 Unprocessable Entity:**
-```json
-{
-  "message": "Validation error: [field: error message]"
-}
-```
-
-Example:
-```json
-{
-  "message": "Validation error: [password: Password must be between 8 and 120 characters]"
+  "timestamp": "2026-02-13T12:00:00",
+  "status": 403,
+  "error": "Forbidden",
+  "message": "You don't have permission to edit this document. Required role: EDITOR",
+  "path": "/api/documents/42"
 }
 ```
 
 ---
 
-## Common Headers
+## 🚦 8. Rate Limiting
 
-### Request Headers
+### 8.1 Rate Limit Headers
 
-**Required for JSON requests:**
-```
-Content-Type: application/json
-```
+All responses include rate limit headers:
 
-**Required for file uploads:**
 ```
-Content-Type: multipart/form-data
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1707826800
 ```
 
-**Required for authenticated endpoints:**
-```
-Cookie: JWT=<token>
-```
+### 8.2 Rate Limits by Endpoint Type
 
-### Response Headers
+| Endpoint Type | Limit | Window | Scope |
+|---------------|-------|--------|-------|
+| OTP requests | 5 | 1 hour | Per email |
+| Login attempts | 10 | 1 hour | Per IP |
+| Share link creation | 20 | 1 hour | Per user |
+| Document creation | 50 | 1 hour | Per user |
+| API calls (general) | 100 | 1 minute | Per user |
 
-**Successful login/refresh:**
-```
-Set-Cookie: JWT=<token>; Path=/; HttpOnly; Max-Age=86400
-```
-
----
-
-## Authentication Flow
-
-### Complete Registration & Login Flow
-
-```bash
-# 1. Register
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"firstName":"John","lastName":"Doe","email":"john@example.com","password":"Pass123!"}'
-
-# 2. Check email for OTP (6-digit code)
-
-# 3. Verify OTP
-curl -X POST http://localhost:8080/api/auth/verify-otp \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{"email":"john@example.com","otp":"123456"}'
-
-# 4. Login
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{"email":"john@example.com","password":"Pass123!"}'
-
-# 5. Use authenticated endpoints
-curl -X GET http://localhost:8080/api/auth/me -b cookies.txt
-curl -X POST http://localhost:8080/api/documents/create \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{"title":"My Document"}'
-```
-
----
-
-## Document Visibility Levels
-
-| Level | Description | Access |
-|-------|-------------|--------|
-| `PRIVATE` | Only owner can access | Owner only |
-| `SHARED` | Collaborators can access | Owner + Collaborators |
-| `PUBLIC` | Anyone can access | Everyone |
-
-> **Note:** SHARED and PUBLIC access are not fully implemented yet. Currently, only owner can access documents.
-
----
-
-## Rate Limits
-
-- **OTP Requests:** Maximum 5 per hour per email
-- **OTP Attempts:** Maximum 3 attempts before 30-minute block
-- **File Upload:** Maximum 20MB per file
-
----
-
-## Supported File Types
-
-**Upload endpoint accepts:**
-- `.docx` - Microsoft Word (OpenXML)
-- `.pdf` - PDF documents
-
-All uploaded files are converted to HTML and stored in the database.
-
----
-
-## Environment Configuration
-
-Default configuration:
-
-```properties
-# Server
-server.port=8080
-
-# Database
-spring.datasource.url=jdbc:postgresql://localhost:5432/collab_docs
-spring.datasource.username=postgres
-spring.datasource.password=postgres
-
-# JWT
-jwt.secret=your-secret-key-min-32-chars
-jwt.expiration.ms=86400000  # 24 hours
-
-# Email (Gmail)
-spring.mail.username=your-email@gmail.com
-spring.mail.password=your-app-password
-
-# OTP
-otp.expiry.minutes=10
-otp.max.attempts=3
-otp.block.minutes=30
-```
-
-See `.env.example` for Docker environment variables.
-
----
-
-## Real-Time Collaboration (WebSocket)
-
-The Node.js Yjs service provides real-time collaborative editing via WebSocket using the Yjs CRDT protocol.
-
-### WebSocket Connection
-
-**Endpoint:** `ws://localhost:3000/ws/yjs/{yjsRoomId}`  
-**Protocol:** Yjs sync protocol (y-protocols)  
-**Authentication:** JWT token (required)
-
-### Connection Parameters
-
-**Path Parameter:**
-- `{yjsRoomId}`: The Yjs room ID from the document (e.g., `doc_1234567890_abc123`)
-
-**Query Parameter (Required):**
-- `token`: JWT token from Spring Boot authentication
-
-**Alternative: Authorization Header:**
-```
-Authorization: Bearer {jwt-token}
-```
-
-### JWT Token Claims
-
-When connecting to WebSocket, the JWT token must contain:
+### 8.3 Rate Limit Exceeded Response
 
 ```json
 {
-  "iss": "collab_docs",
-  "sub": "user@example.com",
-  "userId": 123,
-  "firstName": "John",
-  "lastName": "Doe",
-  "roles": "ROLE_USER",
-  "iat": 1234567890,
-  "exp": 1234571490
+  "timestamp": "2026-02-13T12:00:00",
+  "status": 429,
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded. Please try again in 45 seconds.",
+  "retryAfter": 45
 }
 ```
 
-> **Important:** The `userId` claim is used for user tracking. The `sub` claim contains the email address.
+---
 
-### Connection Flow
+## 🎨 9. Frontend Integration Guide
 
-```mermaid
-sequenceDiagram
-    participant F as Frontend
-    participant Y as Yjs Service
-    participant S as Spring Boot
-    participant P as PostgreSQL
-    
-    F->>Y: WebSocket Connect (ws://yjs-service/ws/yjs/{roomId}?token={jwt})
-    Y->>Y: Verify JWT token
-    Y->>S: GET /yjs-snapshot/{roomId}
-    S->>P: Query snapshot by yjsRoomId
-    P-->>S: Return binary snapshot
-    S-->>Y: Binary Yjs data
-    Y->>Y: Apply snapshot to Y.Doc
-    Y->>F: MESSAGE_SYNC_STEP1 (initial state)
-    F->>F: Yjs document ready
-    
-    loop Real-time Editing
-        F->>Y: User edit (MESSAGE_SYNC_UPDATE)
-        Y->>Y: Apply CRDT update
-        Y->>F: Broadcast to other clients
-    end
-    
-    loop Auto-save (every 5 minutes)
-        Y->>S: POST /yjs-snapshot (binary data)
-        S->>P: UPDATE documents SET yjs_snapshot
-    end
-```
-
-### JavaScript Example (Vanilla WebSocket)
+### 9.1 Authentication Flow
 
 ```javascript
-// Get JWT token from cookie
-function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
+// 1. Register
+async function register(userData) {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(userData)
+  });
+  
+  if (response.ok) {
+    showOTPModal(userData.email);
+  }
 }
 
-const jwtToken = getCookie('jwt');
-const yjsRoomId = 'doc_1234567890_abc123'; // From document response
+// 2. Verify OTP
+async function verifyOTP(email, otp) {
+  const response = await fetch('/api/auth/verify-otp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include', // Important: saves JWT cookie
+    body: JSON.stringify({ email, otp })
+  });
+  
+  if (response.ok) {
+    redirectToLogin();
+  }
+}
 
-// Connect to Yjs service
-const ws = new WebSocket(
-    `ws://localhost:3000/ws/yjs/${yjsRoomId}?token=${jwtToken}`
-);
+// 3. Login
+async function login(credentials) {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include', // Important: saves JWT cookie
+    body: JSON.stringify(credentials)
+  });
+  
+  if (response.ok) {
+    const user = await response.json();
+    redirectToDashboard();
+  }
+}
 
-ws.onopen = () => {
-    console.log('Connected to Yjs collaboration service');
-};
+// 4. Check Auth Status
+async function checkAuth() {
+  const response = await fetch('/api/auth/validate', {
+    method: 'POST',
+    credentials: 'include'
+  });
+  
+  return response.ok;
+}
 
-ws.onmessage = (event) => {
-    // Yjs protocol handles binary messages
-    // Use Yjs library to process updates
-};
-
-ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-};
+// 5. Logout
+async function logout() {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include'
+  });
+  
+  redirectToLogin();
+}
 ```
 
-### Tiptap + Yjs Integration (Recommended)
+### 9.2 Document Management
 
-For rich text editing with real-time collaboration:
+```javascript
+// Create document
+async function createDocument(title) {
+  const response = await fetch('/api/documents/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ title, visibility: 'PRIVATE' })
+  });
+  
+  const doc = await response.json();
+  openEditor(doc.id, doc.yjsRoomId);
+}
+
+// List documents with pagination
+async function listDocuments(page = 0, search = '') {
+  const params = new URLSearchParams({
+    page,
+    size: 20,
+    sort: 'updatedAt',
+    direction: 'desc',
+    search
+  });
+  
+  const response = await fetch(`/api/documents/list?${params}`, {
+    credentials: 'include'
+  });
+  
+  return await response.json();
+}
+
+// Upload document
+async function uploadDocument(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('visibility', 'PRIVATE');
+  
+  const response = await fetch('/api/documents/upload', {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+  
+  return await response.json();
+}
+```
+
+### 9.3 Real-Time Collaboration Setup
 
 ```javascript
 import { Editor } from '@tiptap/core';
@@ -1482,180 +1660,327 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-// 1. Create Yjs document
-const ydoc = new Y.Doc();
-
-// 2. Connect to Yjs service
-const provider = new WebsocketProvider(
-    'ws://localhost:3000/ws/yjs',  // Base URL
-    yjsRoomId,                       // Document room ID
+async function initializeEditor(documentId, yjsRoomId) {
+  // Get JWT from cookie
+  const jwt = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('jwt='))
+    ?.split('=')[1];
+  
+  if (!jwt) {
+    redirectToLogin();
+    return;
+  }
+  
+  // Get current user info
+  const userResponse = await fetch('/api/auth/me', {
+    credentials: 'include'
+  });
+  const currentUser = await userResponse.json();
+  
+  // Create Yjs document
+  const ydoc = new Y.Doc();
+  
+  // Connect to WebSocket
+  const provider = new WebsocketProvider(
+    'ws://localhost:3000/ws/yjs',
+    yjsRoomId,
     ydoc,
-    {
-        params: {
-            token: jwtToken             // JWT authentication
-        }
-    }
-);
-
-// 3. Create Tiptap editor with collaboration
-const editor = new Editor({
+    { params: { token: jwt } }
+  );
+  
+  // Initialize editor
+  const editor = new Editor({
     element: document.querySelector('#editor'),
     extensions: [
-        StarterKit.configure({
-            history: false,  // Yjs handles history
-        }),
-        Collaboration.configure({
-            document: ydoc,
-        }),
-        CollaborationCursor.configure({
-            provider: provider,
-            user: {
-                name: 'John Doe',
-                color: '#ff0000',
-            },
-        }),
+      StarterKit.configure({
+        history: false, // Yjs handles history
+      }),
+      Collaboration.configure({
+        document: ydoc,
+      }),
+      CollaborationCursor.configure({
+        provider: provider,
+        user: {
+          name: `${currentUser.firstName} ${currentUser.lastName}`,
+          color: generateUserColor(currentUser.id),
+        },
+      }),
     ],
-    content: '<p>Start collaborating!</p>',
-});
-
-// 4. Monitor connection status
-provider.on('status', event => {
-    console.log('Connection status:', event.status); // connecting, connected, disconnected
-});
-
-// 5. Cleanup on unmount
-function cleanup() {
-    provider.destroy();
-    editor.destroy();
-}
-```
-
-### Persistence Architecture
-
-**Dual-Layer Persistence:**
-
-1. **Redis (Cache Layer)**
-   - Fast in-memory storage
-   - 24-hour TTL
-   - Handles active sessions
-
-2. **PostgreSQL (Permanent Storage)**
-   - Durable storage in `documents.yjs_snapshot` field
-   - Auto-save every 5 minutes
-   - Final save on user disconnect
-
-**Document Loading Priority:**
-1. Try PostgreSQL first (permanent)
-2. Fallback to Redis (cache)
-3. Create new document if neither exists
-
-### Active Users Tracking
-
-**Endpoint:** `GET /api/documents/{documentId}/users`  
-**Description:** Get list of currently active users in a document.
-
-```bash
-curl -X GET "http://localhost:3000/api/documents/doc_1234567890_abc123/users"
-```
-
-**Response:**
-```json
-{
-  "users": [
-    {
-      "userId": "123",
-      "name": "John Doe",
-      "email": "john@example.com"
+  });
+  
+  // Handle connection status
+  provider.on('status', event => {
+    updateConnectionStatus(event.status);
+  });
+  
+  provider.on('sync', isSynced => {
+    if (isSynced) {
+      hideLoadingSpinner();
     }
-  ],
-  "count": 1
+  });
+  
+  // Cleanup on unmount
+  return () => {
+    provider.disconnect();
+    editor.destroy();
+  };
+}
+
+function generateUserColor(userId) {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+    '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'
+  ];
+  return colors[userId % colors.length];
 }
 ```
 
-### Health Check
+### 9.4 Version Management
 
-**Endpoint:** `GET /health`  
-**Base URL:** `http://localhost:3000`
+```javascript
+// Create version
+async function createVersion(documentId, versionName, comment) {
+  const response = await fetch(`/api/documents/${documentId}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ versionName, comment })
+  });
+  
+  return await response.json();
+}
 
-```bash
-curl http://localhost:3000/health
+// List versions
+async function listVersions(documentId) {
+  const response = await fetch(`/api/documents/${documentId}/versions`, {
+    credentials: 'include'
+  });
+  
+  return await response.json();
+}
+
+// View version (read-only)
+async function viewVersion(versionId) {
+  const response = await fetch(`/api/versions/${versionId}`, {
+    credentials: 'include'
+  });
+  
+  const version = await response.json();
+  
+  // Display in read-only editor
+  editor.setOptions({ editable: false });
+  editor.commands.setContent(version.content);
+  
+  return version;
+}
+
+// Restore version
+async function restoreVersion(versionId) {
+  const confirmed = confirm('This will create a new version from this checkpoint. Continue?');
+  if (!confirmed) return;
+  
+  const response = await fetch(`/api/versions/${versionId}/restore`, {
+    method: 'POST',
+    credentials: 'include'
+  });
+  
+  const result = await response.json();
+  
+  // Reload editor
+  location.reload();
+}
 ```
 
-**Response:**
-```json
-{
-  "status": "UP",
-  "service": "yjs-collaboration",
-  "timestamp": "2026-02-09T18:00:00.000Z",
-  "stats": {
-    "activeDocuments": 5,
-    "totalConnections": 12
+### 9.5 Share Link Flow
+
+```javascript
+// Create share link
+async function createShareLink(documentId, options) {
+  const response = await fetch(`/api/documents/${documentId}/share-links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      role: options.role || 'VIEWER',
+      expiresInDays: options.expiresInDays || 7,
+      maxUses: options.maxUses || null,
+      requiresAuth: options.requiresAuth || false,
+      description: options.description || ''
+    })
+  });
+  
+  const link = await response.json();
+  
+  // Copy to clipboard
+  navigator.clipboard.writeText(link.shareUrl);
+  showNotification('Link copied to clipboard!');
+  
+  return link;
+}
+
+// Handle share link access (recipient side)
+async function handleShareLink(token) {
+  // Step 1: Validate link
+  const validation = await fetch(`/api/share/${token}/validate`);
+  const linkInfo = await validation.json();
+  
+  if (!linkInfo.isValid) {
+    showError('This link is expired or invalid');
+    return;
+  }
+  
+  // Step 2: Show document preview with login prompt
+  showDocumentPreview({
+    title: linkInfo.documentTitle,
+    owner: linkInfo.createdByName,
+    role: linkInfo.role,
+    requiresLogin: true
+  });
+  
+  // Step 3: After login/register, grant access
+  const accessResponse = await fetch(`/api/share/${token}/access`, {
+    method: 'POST',
+    credentials: 'include'
+  });
+  
+  if (accessResponse.status === 401) {
+    // Not logged in
+    const error = await accessResponse.json();
+    showLoginModal(error);
+    return;
+  }
+  
+  const docInfo = await accessResponse.json();
+  
+  // Step 4: Redirect to editor
+  window.location.href = `/editor/${docInfo.documentId}`;
+}
+```
+
+### 9.6 Error Handling
+
+```javascript
+// Global error handler
+async function handleAPIError(response) {
+  if (response.status === 401) {
+    // Unauthorized - redirect to login
+    localStorage.setItem('redirectAfterLogin', window.location.pathname);
+    window.location.href = '/login';
+    return;
+  }
+  
+  const error = await response.json();
+  
+  switch (response.status) {
+    case 400:
+      showValidationErrors(error.errors || [error.message]);
+      break;
+    case 403:
+      showError('You don\'t have permission to perform this action');
+      break;
+    case 404:
+      showError('Resource not found');
+      break;
+    case 429:
+      showError(`Too many requests. Please try again in ${error.retryAfter} seconds`);
+      break;
+    case 500:
+      showError('Server error. Please try again later');
+      break;
+    default:
+      showError(error.message || 'An error occurred');
+  }
+}
+
+// Example usage
+async function saveDocument() {
+  try {
+    const response = await fetch('/api/documents/42', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ title: 'New Title' })
+    });
+    
+    if (!response.ok) {
+      await handleAPIError(response);
+      return;
+    }
+    
+    const doc = await response.json();
+    showSuccess('Document saved successfully');
+  } catch (error) {
+    showError('Network error. Please check your connection');
   }
 }
 ```
 
-### Error Scenarios
+---
 
-**401 Unauthorized:**
-- Invalid or missing JWT token
-- WebSocket connection rejected
-- Response: `HTTP/1.1 401 Unauthorized`
+## 📝 Notes for Frontend Developers
 
-**400 Bad Request:**
-- Invalid WebSocket path
-- Expected format: `/ws/yjs/{yjsRoomId}`
-- Response: `HTTP/1.1 400 Bad Request`
+### Authentication
+- **Always include** `credentials: 'include'` in fetch requests for JWT cookie
+- JWT expires after 24 hours - use `/api/auth/refresh` to extend
+- Check auth status with `/api/auth/validate` before sensitive operations
+- Store `redirectAfterLogin` in localStorage for post-login navigation
 
-### Performance Characteristics
+### WebSocket Connection
+- Extract JWT from cookie: `document.cookie.split('; ').find(row => row.startsWith('jwt='))`
+- Pass JWT as query parameter: `?token=${jwt}`
+- Handle connection states: `connected`, `disconnected`, `syncing`
+- Implement reconnection logic with exponential backoff
 
-- **Auto-save interval:** 5 minutes
-- **Heartbeat (ping/pong):** Every 30 seconds
-- **Max connections per instance:** ~1,000 concurrent
-- **Max active documents:** ~100 simultaneously
-- **Snapshot size limit:** 50MB per document
+### Real-Time Collaboration
+- Use `y-websocket` provider for Yjs
+- Disable TipTap's built-in history (Yjs handles undo/redo)
+- Generate consistent user colors based on user ID
+- Show connection status and active users count
 
-### Docker Configuration
+### Error Handling
+- Implement global error handler for consistent UX
+- Handle 401 specially: redirect to login with return URL
+- Show user-friendly messages for validation errors
+- Implement retry logic for 429 (rate limit) errors
 
-```yaml
-services:
-  yjs-service:
-    image: collab-docs-yjs-service
-    ports:
-      - "3000:3000"
-    environment:
-      BACKEND_URL: http://backend:8080
-      JWT_SECRET: ${JWT_SECRET}  # Must match Spring Boot
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-```
+### Performance
+- Implement pagination for document lists (default: 20 per page)
+- Lazy load editor components
+- Debounce search inputs (300ms recommended)
+- Cache user info from `/api/auth/me`
+
+### Security
+- Never store JWT in localStorage (XSS vulnerable)
+- Use HttpOnly cookies (already implemented)
+- Validate user permissions before showing UI controls
+- Sanitize user input before rendering
 
 ---
 
-## Notes
+## 🔄 Changelog
 
-1. **JWT Storage:** JWT tokens are stored as HttpOnly cookies for security
-2. **CORS:** Configured to accept requests from frontend URL (configurable)
-3. **CSRF:** Disabled (stateless JWT authentication)
-4. **Session:** Stateless (no server-side sessions)
-5. **Yjs Integration:** Real-time collaboration handled by Node.js microservice on port 3000
+### v2.0 (February 13, 2026)
+- Added complete document sharing system (share links + email invitations)
+- Implemented Option 2: Force Registration for share links
+- Added DocumentAccessResponse DTO
+- Updated all endpoints with comprehensive examples
+- Added frontend integration guide
+- Documented error handling patterns
+- Added rate limiting information
+
+### v1.0 (February 12, 2026)
+- Initial API contract
+- Authentication system
+- Document management
+- Real-time collaboration
+- Document versioning
+- Collaborator management
 
 ---
 
-## Quick Reference
+**API Version:** 2.0  
+**Last Updated:** February 13, 2026  
+**Maintained by:** Collab-Docs Team  
+**Contact:** support@collab-docs.example.com
 
-### Base URLs
-- **Backend API:** http://localhost:8080
-- **Yjs WebSocket:** ws://localhost:3000/ws/yjs/{documentId}?token={jwt}
-- **Swagger UI:** http://localhost:8080/swagger-ui.html
-
-### Health Check
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-**Response:**
-```json
-{
-  "status": "UP"
-}
-```
