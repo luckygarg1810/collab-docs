@@ -297,6 +297,119 @@ curl "http://localhost:3000/api/documents/doc_abc123/users"
 
 ---
 
+### 7. Document Sharing System (Spring Boot)
+
+**Two sharing methods:**
+
+#### A. Share Links (Public/Private URLs)
+```bash
+# Create share link
+curl -X POST http://localhost:8080/api/documents/1/share-links \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "role": "VIEWER",
+    "expiresInDays": 7,
+    "maxUses": 10,
+    "requiresAuth": false,
+    "description": "Public link for stakeholders"
+  }'
+
+# Response
+{
+  "id": 5,
+  "token": "abc123xyz456def789",
+  "shareUrl": "http://localhost:3000/share/abc123xyz456def789",
+  "role": "VIEWER",
+  "expiresAt": "2026-02-20T10:00:00",
+  "maxUses": 10,
+  "currentUses": 0,
+  "isActive": true,
+  "requiresAuth": false
+}
+
+# Validate link (public endpoint)
+curl "http://localhost:8080/api/share/abc123xyz456/validate"
+
+# Access document via link
+curl -X POST "http://localhost:8080/api/share/abc123xyz456/access" \
+  -b cookies.txt
+
+# List share links for document
+curl "http://localhost:8080/api/documents/1/share-links?activeOnly=true" \
+  -b cookies.txt
+
+# Revoke share link
+curl -X POST "http://localhost:8080/api/share-links/5/revoke" \
+  -b cookies.txt
+```
+
+**Features:**
+- ✅ Cryptographically secure tokens (32 bytes, URL-safe Base64)
+- ✅ Configurable expiration (days)
+- ✅ Usage limits (max uses tracking)
+- ✅ Role-based access (VIEWER, EDITOR)
+- ✅ Optional authentication requirement
+- ✅ Instant revocation
+- ✅ Audit trail (creator, timestamps, usage count)
+- ✅ Automatic cleanup (expired links deactivated hourly)
+
+#### B. Email Invitations
+```bash
+# Send invitation
+curl -X POST http://localhost:8080/api/documents/1/invitations \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "email": "colleague@example.com",
+    "role": "EDITOR",
+    "message": "Let's collaborate on this document!"
+  }'
+
+# User receives email with accept/decline links
+
+# Accept invitation (from email link)
+curl -X POST "http://localhost:8080/api/invitations/{token}/accept" \
+  -b cookies.txt
+
+# Get my pending invitations
+curl "http://localhost:8080/api/invitations/pending" \
+  -b cookies.txt
+
+# List invitations for document
+curl "http://localhost:8080/api/documents/1/invitations" \
+  -b cookies.txt
+
+# Revoke invitation
+curl -X DELETE "http://localhost:8080/api/invitations/10" \
+  -b cookies.txt
+```
+
+**Features:**
+- ✅ Email-based invitations with HTML templates
+- ✅ Accept/Decline workflow
+- ✅ Status tracking (PENDING, ACCEPTED, DECLINED, EXPIRED, REVOKED)
+- ✅ Auto-expiration (7 days, configurable)
+- ✅ Duplicate prevention
+- ✅ Email validation
+- ✅ Personal message support
+- ✅ Automatic permission creation on acceptance
+
+**Security:**
+- ✅ Unique tokens per link/invitation
+- ✅ Permission verification (EDITOR+ to share)
+- ✅ RBAC integration (cannot grant OWNER via sharing)
+- ✅ Self-invitation prevention
+- ✅ Email ownership verification
+- ✅ Audit logging
+
+**Scheduled Cleanup Jobs:**
+- Hourly: Deactivate expired share links
+- Hourly: Mark expired invitations
+- Daily (2 AM): Delete old records (90+ days for links, 30+ days for invitations)
+
+---
+
 ## 🔒 Security Features
 
 ### Authentication & Authorization
@@ -306,6 +419,10 @@ curl "http://localhost:3000/api/documents/doc_abc123/users"
 - ✅ BCrypt password hashing (10 rounds)
 - ✅ Email OTP verification
 - ✅ OTP rate limiting (5/hour, 3 attempts before 30min block)
+- ✅ RBAC (OWNER/EDITOR/VIEWER roles)
+- ✅ Document sharing permissions
+- ✅ Share links with expiration and usage limits
+- ✅ Email invitations with accept/decline workflow
 
 ### Security Headers
 - ✅ CORS configuration
@@ -313,10 +430,8 @@ curl "http://localhost:3000/api/documents/doc_abc123/users"
 - ✅ Environment-based CORS origins
 
 ### What's Missing
-- ❌ RBAC (Owner/Editor/Viewer roles)
-- ❌ API rate limiting
-- ❌ Document sharing permissions
-- ❌ Public document access
+- ❌ API rate limiting (infrastructure ready, needs activation)
+- ❌ Public document access (share links support this, needs frontend)
 
 ---
 
@@ -335,6 +450,36 @@ yjs_room_id (UNIQUE, NOT NULL),
 yjs_snapshot (BYTEA),  -- Binary Yjs CRDT snapshot
 owner_id, visibility, is_deleted,
 created_at, updated_at, file_size
+```
+
+### document_permissions
+```sql
+id, document_id, user_id, role (OWNER/EDITOR/VIEWER),
+granted_by_user_id, granted_at, expires_at
+UNIQUE(document_id, user_id)
+```
+
+### document_versions
+```sql
+id, document_id, version_number, version_name,
+yjs_snapshot (BYTEA), size_bytes,
+created_by_user_id, created_at, comment
+```
+
+### share_links
+```sql
+id, document_id, token (UNIQUE), role,
+created_by_user_id, created_at, expires_at,
+max_uses, current_uses, is_active,
+requires_auth, description, last_used_at
+```
+
+### share_invitations
+```sql
+id, document_id, invited_email, invited_user_id,
+role, invited_by_user_id, token (UNIQUE),
+message, invited_at, responded_at,
+expires_at, status (PENDING/ACCEPTED/DECLINED/EXPIRED/REVOKED)
 ```
 
 ### pending_users
@@ -587,6 +732,7 @@ ROOM_ID=$(jq -r .yjsRoomId doc.json)
 | 2026-02-08 | Phase 3 | ✅ Removed GraalVM, cleaned WebSocket |
 | 2026-02-09 | Phase 4 | ✅ PostgreSQL persistence, dual-layer architecture, bug fixes |
 | 2026-02-12 | Phase 7 | ✅ Document versioning system with complete CRUD operations |
+| 2026-02-13 | Phase 8 & 9 | ✅ Complete sharing system (share links + email invitations) |
 
 ---
 
@@ -598,9 +744,10 @@ ROOM_ID=$(jq -r .yjsRoomId doc.json)
 **Authentication:** ⭐⭐⭐⭐⭐ Full JWT Flow  
 **RBAC:** ⭐⭐⭐⭐⭐ Complete (3-tier permissions)  
 **Versioning:** ⭐⭐⭐⭐⭐ Complete (Full history management)  
+**Sharing:** ⭐⭐⭐⭐⭐ Complete (Links + Invitations)  
 **Frontend:** ⭐ Not Started  
 
-**Overall Completion:** 85% (Backend feature-complete, needs frontend)
+**Overall Completion:** 90% (Backend feature-complete, needs frontend)
 
 ---
 

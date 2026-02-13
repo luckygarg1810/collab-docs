@@ -182,6 +182,51 @@ public class GlobalExceptionHandler {
                 return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
         }
 
+        @ExceptionHandler(InvalidShareLinkException.class)
+        public ResponseEntity<ErrorResponse> handleInvalidShareLinkException(
+                        InvalidShareLinkException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                "Invalid Share Link",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Invalid share link: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+
+        @ExceptionHandler(InvalidInvitationException.class)
+        public ResponseEntity<ErrorResponse> handleInvalidInvitationException(
+                        InvalidInvitationException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                "Invalid Invitation",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Invalid invitation: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+
+        @ExceptionHandler(DuplicateInvitationException.class)
+        public ResponseEntity<ErrorResponse> handleDuplicateInvitationException(
+                        DuplicateInvitationException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.CONFLICT.value(),
+                                "Duplicate Invitation",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Duplicate invitation: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+        }
+
         @ExceptionHandler(RuntimeException.class)
         public ResponseEntity<ErrorResponse> handleRuntimeException(
                         RuntimeException ex, WebRequest request) {

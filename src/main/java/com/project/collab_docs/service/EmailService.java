@@ -162,4 +162,26 @@ public class EmailService {
             // Don't throw exception for confirmation email failure
         }
     }
+
+    /**
+     * Generic method to send email with custom subject and body
+     * Used for sharing invitations and other custom emails
+     */
+    @Async
+    public void sendEmail(String toEmail, String subject, String body) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject(subject);
+            message.setText(body);
+
+            mailSender.send(message);
+            log.info("Email sent successfully to: {} with subject: {}", toEmail, subject);
+
+        } catch (Exception e) {
+            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
+            // Don't throw exception for email failure to avoid blocking the main transaction
+        }
+    }
 }

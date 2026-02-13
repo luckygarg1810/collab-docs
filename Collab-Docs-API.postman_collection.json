@@ -825,6 +825,298 @@
             "description": "Document version control and history management. Create snapshots, restore previous versions, and manage version storage. Full RBAC integration with VIEWER/EDITOR/OWNER permissions."
         },
         {
+            "name": "Sharing",
+            "item": [
+                {
+                    "name": "Share Links",
+                    "item": [
+                        {
+                            "name": "Create Share Link",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"role\": \"VIEWER\",\n  \"expiresInDays\": 7,\n  \"maxUses\": 10,\n  \"requiresAuth\": false,\n  \"description\": \"Public view link for stakeholders\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/documents/1/share-links",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "documents",
+                                        "1",
+                                        "share-links"
+                                    ]
+                                },
+                                "description": "Create a shareable link for a document. Requires EDITOR or OWNER permission. Can grant VIEWER or EDITOR role (not OWNER). Optional expiration and usage limits."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List Share Links",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/documents/1/share-links?activeOnly=true",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "documents",
+                                        "1",
+                                        "share-links"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "activeOnly",
+                                            "value": "true",
+                                            "description": "Filter to show only active links"
+                                        }
+                                    ]
+                                },
+                                "description": "Get all share links for a document. Requires VIEWER permission. Use activeOnly=true to filter expired/revoked links."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Validate Share Link (Public)",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/share/abc123xyz456/validate",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "share",
+                                        "abc123xyz456",
+                                        "validate"
+                                    ]
+                                },
+                                "description": "Validate if a share link is valid. PUBLIC endpoint - no authentication required. Returns link details without granting access."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Access Via Share Link",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/share/abc123xyz456/access",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "share",
+                                        "abc123xyz456",
+                                        "access"
+                                    ]
+                                },
+                                "description": "Grant access to a document via share link. Requires authentication. Creates permission if user doesn't have one. Increments usage counter."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Revoke Share Link",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/share-links/5/revoke",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "share-links",
+                                        "5",
+                                        "revoke"
+                                    ]
+                                },
+                                "description": "Deactivate a share link. Can be done by link creator or document owner. Link is marked inactive but not deleted (for audit trail)."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Delete Share Link",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/share-links/5",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "share-links",
+                                        "5"
+                                    ]
+                                },
+                                "description": "Permanently delete a share link. Can be done by link creator or document owner. Use revoke instead to preserve audit trail."
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Share document access via secure, customizable links. Support for expiration, usage limits, authentication requirements, and audit trail."
+                },
+                {
+                    "name": "Email Invitations",
+                    "item": [
+                        {
+                            "name": "Send Invitation",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"email\": \"collaborator@example.com\",\n  \"role\": \"EDITOR\",\n  \"message\": \"Hey! Let's work on this document together.\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/documents/1/invitations",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "documents",
+                                        "1",
+                                        "invitations"
+                                    ]
+                                },
+                                "description": "Send a collaboration invitation via email. Requires EDITOR or OWNER permission. Email sent with accept/decline links. Expires after 7 days."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List Document Invitations",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/documents/1/invitations",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "documents",
+                                        "1",
+                                        "invitations"
+                                    ]
+                                },
+                                "description": "Get all invitations for a document (pending, accepted, declined). Requires VIEWER permission or higher."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get My Pending Invitations",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/invitations/pending",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "invitations",
+                                        "pending"
+                                    ]
+                                },
+                                "description": "Get all pending invitations for the current authenticated user. Shows invitations sent to their email address."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Accept Invitation",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/invitations/xyz789token/accept",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "invitations",
+                                        "xyz789token",
+                                        "accept"
+                                    ]
+                                },
+                                "description": "Accept a collaboration invitation. Creates document permission and marks invitation as accepted. User's email must match invitation."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Decline Invitation",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/invitations/xyz789token/decline",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "invitations",
+                                        "xyz789token",
+                                        "decline"
+                                    ]
+                                },
+                                "description": "Decline a collaboration invitation. Marks invitation as declined. User's email must match invitation."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Revoke Invitation",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/invitations/10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "invitations",
+                                        "10"
+                                    ]
+                                },
+                                "description": "Revoke a pending invitation. Can be done by invitation sender or document owner. Marks invitation as revoked."
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Send direct email invitations to specific users. Invitations require acceptance and automatically create permissions. Support for pending, accepted, declined, and expired states."
+                }
+            ],
+            "description": "Document sharing system with two methods: shareable links (public/authenticated) and email invitations (direct). Both support role-based permissions (VIEWER/EDITOR), expiration, and audit trails."
+        },
+        {
             "name": "Yjs Service (Node.js)",
             "item": [
                 {
