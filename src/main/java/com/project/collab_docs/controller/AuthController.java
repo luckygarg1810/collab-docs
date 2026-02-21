@@ -294,7 +294,7 @@ public class AuthController {
         private void setJwtCookie(HttpServletResponse response, String jwtToken) {
                 ResponseCookie jwtCookie = ResponseCookie.from("jwt", jwtToken)
                                 .httpOnly(true)
-                                .secure(true) // HTTPS only
+                                .secure(false) // Set to true in production (HTTPS only)
                                 .path("/")
                                 .sameSite("Lax") // or "Strict" or "None"
                                 .maxAge(jwtUtil.getExpirationTime() / 1000) // in seconds
