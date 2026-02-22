@@ -21,6 +21,7 @@ public class ShareLinkResponse {
     private Long id;
     private String token;
     private String shareUrl;
+    private String documentTitle;
     private Role role;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
@@ -45,6 +46,7 @@ public class ShareLinkResponse {
                 .id(link.getId())
                 .token(link.getToken())
                 .shareUrl(link.getShareUrl())
+                .documentTitle(link.getDocument().getTitle())
                 .role(link.getRole())
                 .createdAt(link.getCreatedAt())
                 .expiresAt(link.getExpiresAt())
@@ -75,4 +77,3 @@ public class ShareLinkResponse {
                 .build();
     }
 }
-
