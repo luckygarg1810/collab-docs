@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const Y = require('yjs');
+const cors = require('cors');
 const { encoding, decoding } = require('lib0');
 const awarenessProtocol = require('y-protocols/awareness');
 const logger = require('./config/logger');
@@ -33,6 +34,24 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ noServer: true });
 
 const PORT = process.env.PORT || 3000;
+
+// CORS — allow the frontend origin for all HTTP routes
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+    .split(',').map(o => o.trim());
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (curl, server-to-server)
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS: origin ${origin} not allowed`));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Message types from y-protocols
 const MESSAGE_SYNC = 0;
@@ -70,6 +89,15 @@ app.get('/api/documents/:documentId/users', async (req, res) => {
 
 // WebSocket upgrade handler with authentication
 server.on('upgrade', (request, socket, head) => {
+    // Check WebSocket origin against allowed origins
+    const origin = request.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        logger.warn('WebSocket connection rejected: Origin not allowed', { origin });
+        return;
+    }
+
     // Authenticate the connection
     const userInfo = authenticateConnection(request);
 
