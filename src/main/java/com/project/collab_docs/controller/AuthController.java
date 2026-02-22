@@ -128,6 +128,8 @@ public class AuthController {
                                         .firstName(user.getFirstName())
                                         .lastName(user.getLastName())
                                         .message("Login successful. JWT Token is added to cookies.")
+                                        .token(jwtToken) // Included for WebSocket auth (Yjs service cannot read
+                                                         // HttpOnly cookies)
                                         .build();
 
                         return ResponseEntity.ok(authResponse);

@@ -1,10 +1,10 @@
-# Collab-Docs API Contract v2.0
+# Collab-Docs API Contract v2.1
 
-**Last Updated:** February 13, 2026  
+**Last Updated:** February 22, 2026  
 **Base URL:** `http://localhost:8080`  
 **WebSocket URL:** `ws://localhost:3000`  
-**API Version:** 2.0  
-**Authentication:** JWT (HttpOnly Cookie)
+**API Version:** 2.1  
+**Authentication:** JWT (HttpOnly Cookie + token in login response for WebSocket)
 
 ---
 
@@ -121,7 +121,7 @@ All authenticated endpoints require JWT token in HttpOnly cookie.
 
 **Endpoint:** `POST /api/auth/login`  
 **Auth Required:** No  
-**Description:** Authenticate user and receive JWT token in cookie
+**Description:** Authenticate user and receive JWT token in HttpOnly cookie. The raw token is also returned in the response body exclusively for WebSocket authentication (the Yjs service runs on a different origin so it cannot access Spring Boot's HttpOnly cookie).
 
 **Request Body:**
 ```json
@@ -138,13 +138,16 @@ All authenticated endpoints require JWT token in HttpOnly cookie.
   "email": "john.doe@example.com",
   "firstName": "John",
   "lastName": "Doe",
-  "message": "Login successful. JWT Token is added to cookies."
+  "message": "Login successful. JWT Token is added to cookies.",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
+> **Note on `token` field:** The JWT is set as an `HttpOnly` cookie for all Spring Boot API calls (browser sends it automatically). The `token` field in the response body exists **only** so the frontend can pass it to the Yjs WebSocket service (`ws://localhost:3000`), which runs on a different port and therefore cannot read the HttpOnly cookie. Store this token in memory/Zustand — do **not** put it in `localStorage`.
+
 **Set-Cookie Header:**
 ```
-jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Lax; Max-Age=86400; Path=/
+jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; SameSite=Lax; Max-Age=86400; Path=/
 ```
 
 **Error Responses:**
@@ -548,38 +551,40 @@ GET /api/documents/list?page=0&size=20&sort=updatedAt&direction=desc&search=proj
 ### 3.1 WebSocket Connection
 
 **Endpoint:** `ws://localhost:3000/ws/yjs/{yjsRoomId}`  
-**Auth Required:** Yes (JWT in query param or header)  
+**Auth Required:** Yes (JWT as `?token=` query parameter)  
 **Protocol:** Yjs CRDT over WebSocket  
 **Description:** Real-time document collaboration
 
-**Connection Methods:**
+> **Why not the HttpOnly cookie?** The JWT cookie is marked `HttpOnly`, meaning JavaScript cannot read it — this is intentional XSS protection. Even if it were readable, the Yjs service runs on `localhost:3000` (a different origin from the Spring Boot backend at `localhost:8080`), so the browser would not send that cookie with WebSocket requests to port 3000. The solution is to use the `token` returned in the **login response body** and pass it as a query parameter.
 
-**Option 1: Query Parameter**
+**Connection via y-websocket (recommended):**
 ```javascript
-const jwt = getCookie('jwt');
-const ws = new WebSocket(
-  `ws://localhost:3000/ws/yjs/doc_1707825600_abc123?token=${jwt}`
+// token comes from the login response body (stored in Zustand / app memory)
+const { token } = useAuthStore.getState();
+
+const provider = new WebsocketProvider(
+  'ws://localhost:3000/ws/yjs',
+  yjsRoomId,
+  ydoc,
+  { params: { token } }  // appended as ?token=<jwt>
 );
 ```
 
-**Option 2: Authorization Header**
+**Raw WebSocket (alternative):**
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/ws/yjs/doc_1707825600_abc123', {
-  headers: {
-    'Authorization': `Bearer ${jwt}`
-  }
-});
+const ws = new WebSocket(
+  `ws://localhost:3000/ws/yjs/doc_1707825600_abc123?token=${token}`
+);
 ```
 
 **Connection Success:**
-- Server sends: `MESSAGE_SYNC_STEP1` (initial document state)
+- Server sends: `MESSAGE_SYNC_STEP1` (initial document state vector)
 - Client sends: `MESSAGE_SYNC_STEP2` (client state)
-- Server sends: `MESSAGE_SYNC_STEP2` (state diff)
+- Server sends: `MESSAGE_SYNC_STEP2` (state diff / missing updates)
 
 **Message Types:**
 - `MESSAGE_SYNC` (0): Document synchronization
 - `MESSAGE_AWARENESS` (1): User presence/cursor
-- `MESSAGE_AUTH` (2): Authentication (internal)
 
 **Heartbeat:**
 - Ping every 30 seconds
@@ -589,70 +594,49 @@ const ws = new WebSocket('ws://localhost:3000/ws/yjs/doc_1707825600_abc123', {
 **Error Responses:**
 - `401 Unauthorized`: Invalid or missing JWT
 - `403 Forbidden`: No permission to access document
-- `404 Not Found`: Document doesn't exist
+- `400 Bad Request`: Invalid WebSocket path
 
 ---
 
-### 3.2 TipTap Editor Integration
+### 3.2 TipTap + React Integration
 
-**Example Implementation:**
+**Key pattern (React/Zustand):** Create the `WebsocketProvider` inside a `useEffect` that waits for the token to be available. Do **not** create it in a `useState` initializer — Zustand `persist` rehydrates from localStorage after the first render, so the token would be `null` on that first call, causing a 401 and an infinite reconnect loop.
+
 ```javascript
-import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Collaboration from '@tiptap/extension-collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import { useAuthStore } from '../store/authStore';
 
-// Create Yjs document
-const ydoc = new Y.Doc();
+function TipTapEditor({ yjsRoomId }) {
+  const { user, token } = useAuthStore();
+  const [ydoc] = useState(() => new Y.Doc());
+  const [provider, setProvider] = useState(null);
+  const providerRef = useRef(null);
 
-// Get JWT from cookie
-const jwt = document.cookie
-  .split('; ')
-  .find(row => row.startsWith('jwt='))
-  ?.split('=')[1];
+  // Create provider only after token is available
+  useEffect(() => {
+    if (!token || providerRef.current) return;
 
-// Connect to WebSocket provider
-const provider = new WebsocketProvider(
-  'ws://localhost:3000/ws/yjs',
-  documentInfo.yjsRoomId,
-  ydoc,
-  {
-    params: { token: jwt }
-  }
-);
+    const p = new WebsocketProvider(
+      'ws://localhost:3000/ws/yjs',
+      yjsRoomId,
+      ydoc,
+      { params: { token } }
+    );
+    providerRef.current = p;
+    setProvider(p);
+  }, [token, yjsRoomId, ydoc]);
 
-// Initialize TipTap editor
-const editor = new Editor({
-  element: document.querySelector('#editor'),
-  extensions: [
-    StarterKit.configure({
-      history: false, // Yjs handles history
-    }),
-    Collaboration.configure({
-      document: ydoc,
-    }),
-    CollaborationCursor.configure({
-      provider: provider,
-      user: {
-        name: currentUser.firstName + ' ' + currentUser.lastName,
-        color: generateUserColor(currentUser.id),
-      },
-    }),
-  ],
-  content: '', // Synced from Yjs
-});
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => providerRef.current?.disconnect();
+  }, []);
 
-// Handle connection status
-provider.on('status', event => {
-  console.log('WebSocket status:', event.status); // connected | disconnected
-});
+  if (!provider) return <Spinner />;
 
-// Handle sync status
-provider.on('sync', isSynced => {
-  console.log('Document synced:', isSynced);
-});
+  // Pass provider to TipTap CollaborationCursor extension...
+}
 ```
 
 ---
@@ -1652,6 +1636,8 @@ async function uploadDocument(file) {
 
 ### 9.3 Real-Time Collaboration Setup
 
+> **Important:** The JWT cookie is `HttpOnly` — JavaScript cannot read it with `document.cookie`. Use the `token` field from the **login response body** instead. Store it in Zustand/memory (not `localStorage`). See Section 3.2 for the full React pattern with deferred provider creation.
+
 ```javascript
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -1660,41 +1646,33 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-async function initializeEditor(documentId, yjsRoomId) {
-  // Get JWT from cookie
-  const jwt = document.cookie
-    .split('; ')
-    .find(row => row.startsWith('jwt='))
-    ?.split('=')[1];
-  
-  if (!jwt) {
+async function initializeEditor(yjsRoomId, token, currentUser) {
+  // token comes from the login response body (stored in app state / Zustand)
+  // Do NOT try: document.cookie.split('; ').find(row => row.startsWith('jwt='))
+  // The jwt cookie is HttpOnly — it is invisible to JavaScript by design.
+
+  if (!token) {
     redirectToLogin();
     return;
   }
-  
-  // Get current user info
-  const userResponse = await fetch('/api/auth/me', {
-    credentials: 'include'
-  });
-  const currentUser = await userResponse.json();
-  
+
   // Create Yjs document
   const ydoc = new Y.Doc();
-  
-  // Connect to WebSocket
+
+  // Connect to Yjs WebSocket service (port 3000) using token query param
   const provider = new WebsocketProvider(
     'ws://localhost:3000/ws/yjs',
     yjsRoomId,
     ydoc,
-    { params: { token: jwt } }
+    { params: { token } }   // appended as ?token=<jwt>
   );
-  
+
   // Initialize editor
   const editor = new Editor({
     element: document.querySelector('#editor'),
     extensions: [
       StarterKit.configure({
-        history: false, // Yjs handles history
+        history: false, // Yjs handles undo/redo
       }),
       Collaboration.configure({
         document: ydoc,
@@ -1708,18 +1686,16 @@ async function initializeEditor(documentId, yjsRoomId) {
       }),
     ],
   });
-  
+
   // Handle connection status
   provider.on('status', event => {
     updateConnectionStatus(event.status);
   });
-  
+
   provider.on('sync', isSynced => {
-    if (isSynced) {
-      hideLoadingSpinner();
-    }
+    if (isSynced) hideLoadingSpinner();
   });
-  
+
   // Cleanup on unmount
   return () => {
     provider.disconnect();
@@ -1927,10 +1903,13 @@ async function saveDocument() {
 - Store `redirectAfterLogin` in localStorage for post-login navigation
 
 ### WebSocket Connection
-- Extract JWT from cookie: `document.cookie.split('; ').find(row => row.startsWith('jwt='))`
-- Pass JWT as query parameter: `?token=${jwt}`
+- The `jwt` cookie is **HttpOnly** — JavaScript cannot read it (`document.cookie` won't return it)
+- Use the **`token` field from the login response body** for WebSocket authentication
+- Store the token in Zustand/app memory (not `localStorage`)
+- Pass it via query parameter: `new WebsocketProvider(wsUrl, roomId, ydoc, { params: { token } })`
+- Create the provider in a `useEffect` (not `useState` initializer) so it runs after Zustand rehydrates
 - Handle connection states: `connected`, `disconnected`, `syncing`
-- Implement reconnection logic with exponential backoff
+- y-websocket handles reconnection automatically with exponential backoff
 
 ### Real-Time Collaboration
 - Use `y-websocket` provider for Yjs
@@ -1951,14 +1930,23 @@ async function saveDocument() {
 - Cache user info from `/api/auth/me`
 
 ### Security
-- Never store JWT in localStorage (XSS vulnerable)
-- Use HttpOnly cookies (already implemented)
+- The JWT cookie is `HttpOnly` — never readable by JavaScript (XSS protection, already implemented)
+- The `token` field in the login response is for WebSocket use only — store it in Zustand/memory, **not** `localStorage`
+- All Spring Boot API calls use the cookie automatically (`credentials: 'include'`)
 - Validate user permissions before showing UI controls
 - Sanitize user input before rendering
 
 ---
 
 ## 🔄 Changelog
+
+### v2.1 (February 22, 2026)
+- **Login response now includes `token` field** for WebSocket authentication
+- Clarified why `HttpOnly` cookie cannot be used for Yjs WebSocket (different origin + JS inaccessible)
+- Updated Section 3.1 WebSocket connection docs to use token from response body, not cookie
+- Updated Section 3.2 TipTap integration example with correct React/Zustand deferred provider pattern
+- Updated Section 9.3 frontend integration guide with corrected token usage
+- Updated Security and WebSocket notes sections accordingly
 
 ### v2.0 (February 13, 2026)
 - Added complete document sharing system (share links + email invitations)
@@ -1979,8 +1967,8 @@ async function saveDocument() {
 
 ---
 
-**API Version:** 2.0  
-**Last Updated:** February 13, 2026  
+**API Version:** 2.1  
+**Last Updated:** February 22, 2026  
 **Maintained by:** Collab-Docs Team  
 **Contact:** support@collab-docs.example.com
 

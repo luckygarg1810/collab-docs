@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
         "name": "Collab-Docs API (Complete)",
-        "description": "Complete API collection for Collab-Docs application. Includes Spring Boot backend (port 8080) and Node.js Yjs Service (port 3000) endpoints. Real-time collaboration via WebSocket: ws://localhost:3000/ws/yjs/{yjsRoomId}?token={jwt}",
+        "description": "Complete API collection for Collab-Docs application. Includes Spring Boot backend (port 8080) and Node.js Yjs Service (port 3000) endpoints.\n\n**WebSocket Auth:** The JWT cookie is HttpOnly and cannot be read by JavaScript. Use the `token` field from the Login response body and pass it as a query param: ws://localhost:3000/ws/yjs/{yjsRoomId}?token={jwt}\n\n**Important:** Store the token in Zustand/app memory (not localStorage). Create the WebsocketProvider inside a useEffect that waits for the token to be available.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -121,9 +121,51 @@
                                 "login"
                             ]
                         },
-                        "description": "Authenticate user and receive JWT token in HttpOnly cookie"
+                        "description": "Authenticate user and receive JWT token in HttpOnly cookie.\n\nThe JWT is set as an HttpOnly cookie (used automatically by the browser for all Spring Boot API calls).\n\nThe response also includes a `token` field in the body — this exists specifically for WebSocket authentication to the Yjs service (ws://localhost:3000). The Yjs service runs on a different origin, so the browser won't send the HttpOnly cookie there, and JavaScript can't read HttpOnly cookies anyway.\n\n**Usage:** Store the `token` from the response in Zustand/app memory. Pass it as a query param when connecting to the Yjs WebSocket: `new WebsocketProvider(wsUrl, roomId, ydoc, { params: { token } })`"
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Login Success",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/auth/login",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "login"
+                                    ]
+                                }
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                },
+                                {
+                                    "key": "Set-Cookie",
+                                    "value": "jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; SameSite=Lax; Max-Age=86400; Path=/"
+                                }
+                            ],
+                            "body": "{\n  \"id\": 1,\n  \"email\": \"john.doe@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"message\": \"Login successful. JWT Token is added to cookies.\",\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huLmRvZUBleGFtcGxlLmNvbSIsInVzZXJJZCI6MSwi...\"\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Forgot Password",
@@ -926,7 +968,7 @@
                                         "access"
                                     ]
                                 },
-                               "description": "Grant permanent access to a document via share link.\n\n**Flow (Option 2: Force Registration):**\n1. Unauthenticated user clicks share link\n2. Frontend shows login/register page\n3. After authentication, user is redirected to this endpoint\n4. Backend creates permanent DocumentPermission\n5. Returns document details (ID, title, yjsRoomId, role, owner)\n\n**Authentication:** Required (JWT token in cookie)\n**Response:** DocumentAccessResponse with document details\n**Side Effects:** Creates permission record, increments usage counter"
+                                "description": "Grant permanent access to a document via share link.\n\n**Flow (Option 2: Force Registration):**\n1. Unauthenticated user clicks share link\n2. Frontend shows login/register page\n3. After authentication, user is redirected to this endpoint\n4. Backend creates permanent DocumentPermission\n5. Returns document details (ID, title, yjsRoomId, role, owner)\n\n**Authentication:** Required (JWT token in cookie)\n**Response:** DocumentAccessResponse with document details\n**Side Effects:** Creates permission record, increments usage counter"
                             },
                             "response": []
                         },

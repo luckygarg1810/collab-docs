@@ -15,4 +15,5 @@ public class AuthResponse {
     private String firstName;
     private String lastName;
     private String message;
+    private String token; // Returned on login so frontend can pass it to Yjs WebSocket
 }
