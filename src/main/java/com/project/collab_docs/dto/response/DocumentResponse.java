@@ -1,5 +1,6 @@
 package com.project.collab_docs.dto.response;
 
+import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.enums.Visibility;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -26,4 +27,6 @@ public class DocumentResponse {
     private Boolean isDeleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** Effective role of the requesting user (OWNER / EDITOR / VIEWER) */
+    private Role userRole;
 }

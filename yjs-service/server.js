@@ -122,6 +122,18 @@ server.on('upgrade', (request, socket, head) => {
 
     const documentId = pathParts[2];
 
+    // Guest tokens are scoped to a specific yjsRoomId.
+    // Reject if the guest tries to connect to a different room.
+    if (userInfo.isGuest && userInfo.allowedRoomId !== documentId) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        logger.warn('Guest token room mismatch', {
+            allowedRoomId: userInfo.allowedRoomId,
+            requestedRoom: documentId
+        });
+        return;
+    }
+
     // Attach metadata to request for use in connection handler
     request.userInfo = userInfo;
     request.documentId = documentId;

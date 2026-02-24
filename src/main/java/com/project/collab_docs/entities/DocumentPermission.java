@@ -69,6 +69,14 @@ public class DocumentPermission {
     @Column(name = "expires_at", nullable = true)
     private LocalDateTime expiresAt;
 
+    /**
+     * ID of the ShareLink that granted this permission (nullable).
+     * When a share link is deleted/revoked, all permissions created via
+     * that link are also revoked.
+     */
+    @Column(name = "granted_via_share_link_id", nullable = true)
+    private Long grantedViaShareLinkId;
+
     @PrePersist
     protected void onCreate() {
         if (grantedAt == null) {

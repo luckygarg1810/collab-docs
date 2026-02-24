@@ -78,14 +78,33 @@ function authenticateConnection(request) {
         return null;
     }
 
-    // Extract user info from JWT payload
+    // ── Guest token handling ─────────────────────────────────────────────────
+    // Guest tokens have `guest:true` and a `yjsRoomId` claim.
+    // They are VIEWER-only and may only connect to the encoded room.
+    if (decoded.guest === true) {
+        const allowedRoomId = decoded.yjsRoomId;
+        if (!allowedRoomId) {
+            logger.warn('Guest token missing yjsRoomId claim');
+            return null;
+        }
+        logger.info('Guest WebSocket connection authenticated', { allowedRoomId });
+        return {
+            userId: 'guest_' + allowedRoomId,
+            email: 'guest',
+            name: 'Guest',
+            isGuest: true,
+            allowedRoomId,
+        };
+    }
+
+    // ── Regular user token handling ──────────────────────────────────────────
     // IMPORTANT: Spring Boot JWT structure:
     // - "sub": email (subject)
     // - "userId": numeric user ID
     // - "firstName", "lastName": user names
     const userInfo = {
-        userId: decoded.userId || decoded.id || decoded.sub,  // ✅ Check userId FIRST (not sub which is email)
-        email: decoded.email || decoded.sub,                   // ✅ Email from explicit claim or subject
+        userId: decoded.userId || decoded.id || decoded.sub,
+        email: decoded.email || decoded.sub,
         name: decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim(),
     };
 

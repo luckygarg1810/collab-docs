@@ -10,6 +10,7 @@ import com.project.collab_docs.enums.InvitationStatus;
 import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.exception.*;
 import com.project.collab_docs.repository.*;
+import com.project.collab_docs.security.JwtUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +60,9 @@ public class ShareService {
     private DocumentPermissionRepository permissionRepository;
 
     @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
     private PermissionService permissionService;
 
     @Autowired
@@ -83,7 +87,8 @@ public class ShareService {
      *
      * @param documentId Document to share
      * @param request    Share link configuration
-     * @param userId     User creating the link (must have EDITOR or OWNER permission)
+     * @param userId     User creating the link (must have EDITOR or OWNER
+     *                   permission)
      * @return Created share link
      * @throws ResourceNotFoundException if document or user not found
      * @throws PermissionDeniedException if user lacks permission to share
@@ -144,7 +149,8 @@ public class ShareService {
      * @param token  Share link token
      * @param userId User accessing the link (null for anonymous)
      * @return Share link information
-     * @throws InvalidShareLinkException if link is invalid, expired, or usage limit reached
+     * @throws InvalidShareLinkException if link is invalid, expired, or usage limit
+     *                                   reached
      */
     @Transactional
     public ShareLinkResponse validateShareLink(String token, Long userId) {
@@ -174,6 +180,35 @@ public class ShareService {
     }
 
     /**
+     * Issue a short-lived guest JWT for anonymous (no-auth) share link access.
+     * Only valid when the share link has requiresAuth=false.
+     *
+     * @param token Share link token
+     * @return Signed guest JWT (6 hours, VIEWER role, scoped to yjsRoomId)
+     */
+    @Transactional(readOnly = true)
+    public String issueGuestToken(String token) {
+        ShareLink shareLink = shareLinkRepository.findByToken(token)
+                .orElseThrow(() -> new InvalidShareLinkException("Share link not found"));
+
+        if (!shareLink.isValid()) {
+            throw new InvalidShareLinkException("This share link is no longer valid or has expired");
+        }
+
+        if (Boolean.TRUE.equals(shareLink.getRequiresAuth())) {
+            throw new InvalidShareLinkException("This share link requires authentication — cannot issue guest token");
+        }
+
+        String yjsRoomId = shareLink.getDocument().getYjsRoomId();
+        // 6-hour guest session
+        long sixHoursMs = 6 * 60 * 60 * 1000L;
+        String guestToken = jwtUtil.generateGuestToken(yjsRoomId, sixHoursMs);
+
+        log.info("Issued guest token for share link token={} yjsRoomId={}", token, yjsRoomId);
+        return guestToken;
+    }
+
+    /**
      * Grant access to a user via share link and increment usage counter
      *
      * This method is called AFTER user authentication (login/register).
@@ -182,7 +217,8 @@ public class ShareService {
      * @param token  Share link token
      * @param userId User to grant access to (must be authenticated)
      * @return Document details for accessing the document
-     * @throws InvalidShareLinkException if link is invalid, expired, or usage limit reached
+     * @throws InvalidShareLinkException if link is invalid, expired, or usage limit
+     *                                   reached
      * @throws ResourceNotFoundException if user not found
      */
     @Transactional
@@ -223,6 +259,7 @@ public class ShareService {
                     .role(shareLink.getRole())
                     .grantedBy(shareLink.getCreatedBy())
                     .grantedAt(LocalDateTime.now())
+                    .grantedViaShareLinkId(shareLink.getId())
                     .build();
 
             permissionRepository.save(permission);
@@ -244,8 +281,8 @@ public class ShareService {
                 .hasPermissionGranted(!alreadyHadAccess)
                 .accessExpiresAt(shareLink.getExpiresAt())
                 .message(alreadyHadAccess
-                    ? "You already have access to this document"
-                    : "Access granted! You can now collaborate on this document")
+                        ? "You already have access to this document"
+                        : "Access granted! You can now collaborate on this document")
                 .ownerName(document.getOwner().getFirstName() + " " + document.getOwner().getLastName())
                 .build();
     }
@@ -296,10 +333,13 @@ public class ShareService {
             throw new PermissionDeniedException("You don't have permission to revoke this share link");
         }
 
+        // Cascade: revoke permissions granted via this link
+        permissionRepository.deleteByGrantedViaShareLinkId(linkId);
+
         shareLink.setIsActive(false);
         shareLinkRepository.save(shareLink);
 
-        log.info("Revoked share link {} by user {}", linkId, userId);
+        log.info("Revoked share link {} and its granted permissions by user {}", linkId, userId);
     }
 
     /**
@@ -318,8 +358,11 @@ public class ShareService {
             throw new PermissionDeniedException("You don't have permission to delete this share link");
         }
 
+        // Cascade: revoke permissions granted via this link
+        permissionRepository.deleteByGrantedViaShareLinkId(linkId);
+
         shareLinkRepository.delete(shareLink);
-        log.info("Deleted share link {} by user {}", linkId, userId);
+        log.info("Deleted share link {} and its granted permissions by user {}", linkId, userId);
     }
 
     // ==================== Email Invitation Management ====================
@@ -605,25 +648,24 @@ public class ShareService {
             String declineUrl = frontendUrl + "/invitations/decline/" + invitation.getToken();
 
             String subject = invitation.getInvitedBy().getFirstName() + " invited you to collaborate on \""
-                            + invitation.getDocument().getTitle() + "\"";
+                    + invitation.getDocument().getTitle() + "\"";
 
             String body = String.format(
-                "Hello,\n\n" +
-                "%s %s has invited you to collaborate on the document \"%s\" with %s access.\n\n" +
-                "%s\n\n" +
-                "To accept this invitation, click here:\n%s\n\n" +
-                "To decline, click here:\n%s\n\n" +
-                "This invitation will expire on %s.\n\n" +
-                "Best regards,\nCollab-Docs Team",
-                invitation.getInvitedBy().getFirstName(),
-                invitation.getInvitedBy().getLastName(),
-                invitation.getDocument().getTitle(),
-                invitation.getRole().name().toLowerCase(),
-                invitation.getMessage() != null ? "Message: " + invitation.getMessage() : "",
-                acceptUrl,
-                declineUrl,
-                invitation.getExpiresAt()
-            );
+                    "Hello,\n\n" +
+                            "%s %s has invited you to collaborate on the document \"%s\" with %s access.\n\n" +
+                            "%s\n\n" +
+                            "To accept this invitation, click here:\n%s\n\n" +
+                            "To decline, click here:\n%s\n\n" +
+                            "This invitation will expire on %s.\n\n" +
+                            "Best regards,\nCollab-Docs Team",
+                    invitation.getInvitedBy().getFirstName(),
+                    invitation.getInvitedBy().getLastName(),
+                    invitation.getDocument().getTitle(),
+                    invitation.getRole().name().toLowerCase(),
+                    invitation.getMessage() != null ? "Message: " + invitation.getMessage() : "",
+                    acceptUrl,
+                    declineUrl,
+                    invitation.getExpiresAt());
 
             emailService.sendEmail(invitation.getInvitedEmail(), subject, body);
         } catch (Exception e) {
@@ -632,4 +674,3 @@ public class ShareService {
         }
     }
 }
-

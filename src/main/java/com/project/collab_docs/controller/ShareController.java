@@ -52,16 +52,12 @@ public class ShareController {
      * Create a new shareable link for a document
      */
     @PostMapping("/documents/{documentId}/share-links")
-    @Operation(
-        summary = "Create share link",
-        description = "Generate a shareable link for a document with specified permissions and expiration",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Create share link", description = "Generate a shareable link for a document with specified permissions and expiration", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Share link created successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request (e.g., trying to grant OWNER role)"),
-        @ApiResponse(responseCode = "403", description = "User lacks permission to share document"),
-        @ApiResponse(responseCode = "404", description = "Document not found")
+            @ApiResponse(responseCode = "201", description = "Share link created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request (e.g., trying to grant OWNER role)"),
+            @ApiResponse(responseCode = "403", description = "User lacks permission to share document"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
     })
     public ResponseEntity<ShareLinkResponse> createShareLink(
             @Parameter(description = "Document ID") @PathVariable Long documentId,
@@ -77,15 +73,11 @@ public class ShareController {
      * Get all share links for a document
      */
     @GetMapping("/documents/{documentId}/share-links")
-    @Operation(
-        summary = "List share links",
-        description = "Get all share links for a document (requires at least VIEWER permission)",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "List share links", description = "Get all share links for a document (requires at least VIEWER permission)", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Share links retrieved successfully"),
-        @ApiResponse(responseCode = "403", description = "User lacks access to document"),
-        @ApiResponse(responseCode = "404", description = "Document not found")
+            @ApiResponse(responseCode = "200", description = "Share links retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "User lacks access to document"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
     })
     public ResponseEntity<List<ShareLinkResponse>> getDocumentShareLinks(
             @PathVariable Long documentId,
@@ -93,8 +85,8 @@ public class ShareController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         List<ShareLinkResponse> links = activeOnly
-            ? shareService.getActiveShareLinks(documentId, userDetails.getId())
-            : shareService.getDocumentShareLinks(documentId, userDetails.getId());
+                ? shareService.getActiveShareLinks(documentId, userDetails.getId())
+                : shareService.getDocumentShareLinks(documentId, userDetails.getId());
 
         return ResponseEntity.ok(links);
     }
@@ -103,14 +95,11 @@ public class ShareController {
      * Validate a share link (public endpoint)
      */
     @GetMapping("/share/{token}/validate")
-    @Operation(
-        summary = "Validate share link",
-        description = "Check if a share link is valid and get basic information (public endpoint)"
-    )
+    @Operation(summary = "Validate share link", description = "Check if a share link is valid and get basic information (public endpoint)")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Share link is valid"),
-        @ApiResponse(responseCode = "400", description = "Share link is invalid, expired, or usage limit reached"),
-        @ApiResponse(responseCode = "404", description = "Share link not found")
+            @ApiResponse(responseCode = "200", description = "Share link is valid"),
+            @ApiResponse(responseCode = "400", description = "Share link is invalid, expired, or usage limit reached"),
+            @ApiResponse(responseCode = "404", description = "Share link not found")
     })
     public ResponseEntity<ShareLinkResponse> validateShareLink(
             @Parameter(description = "Share link token") @PathVariable String token,
@@ -123,58 +112,51 @@ public class ShareController {
 
     /**
      * Access a document via share link (requires authentication)
-     *
-     * Flow:
-     * 1. Unauthenticated user clicks link → Frontend shows login/register page
-     * 2. After login/register → User is redirected back to this endpoint
-     * 3. Backend grants permanent access and returns document details
      */
     @PostMapping("/share/{token}/access")
-    @Operation(
-        summary = "Access via share link",
-        description = "Grant access to document via share link. User must be authenticated (logged in or registered). Returns document details and grants permanent access permission.",
-        security = @SecurityRequirement(name = "JWT")
-    )
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Access granted successfully, document permission created"),
-        @ApiResponse(responseCode = "400", description = "Share link is invalid, expired, or usage limit reached"),
-        @ApiResponse(responseCode = "401", description = "User must login or register to access this document"),
-        @ApiResponse(responseCode = "404", description = "Share link not found")
-    })
+    @Operation(summary = "Access via share link", description = "Grant access to document via share link. User must be authenticated.", security = @SecurityRequirement(name = "JWT"))
     public ResponseEntity<?> accessViaShareLink(
             @PathVariable String token,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        // Check if user is authenticated
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Map.of(
-                    "error", "Authentication required",
-                    "message", "Please login or register to access this document",
-                    "requiresAuth", true,
-                    "loginUrl", "/api/auth/login",
-                    "registerUrl", "/api/auth/register"
-                ));
+                    .body(Map.of(
+                            "error", "Authentication required",
+                            "message", "Please login or register to access this document",
+                            "requiresAuth", true));
         }
 
-        // Grant access and return document details
         DocumentAccessResponse response = shareService.accessViaShareLink(token, userDetails.getId());
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Guest access via share link (public endpoint — no auth required).
+     * Only valid for share links where requiresAuth=false.
+     * Returns a short-lived VIEWER-only guest JWT for the Yjs room.
+     */
+    @PostMapping("/share/{token}/anonymous-access")
+    @Operation(summary = "Anonymous guest access via share link", description = "Returns a short-lived guest JWT for read-only Yjs access. Only valid when the share link's requiresAuth=false.")
+    public ResponseEntity<?> anonymousAccessViaShareLink(@PathVariable String token) {
+        try {
+            String guestToken = shareService.issueGuestToken(token);
+            return ResponseEntity.ok(Map.of("token", guestToken));
+        } catch (Exception e) {
+            log.warn("Anonymous access denied for token {}: {}", token, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     /**
      * Revoke (deactivate) a share link
      */
     @PostMapping("/share-links/{linkId}/revoke")
-    @Operation(
-        summary = "Revoke share link",
-        description = "Deactivate a share link (must be creator or document owner)",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Revoke share link", description = "Deactivate a share link (must be creator or document owner)", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Share link revoked successfully"),
-        @ApiResponse(responseCode = "403", description = "User lacks permission to revoke link"),
-        @ApiResponse(responseCode = "404", description = "Share link not found")
+            @ApiResponse(responseCode = "200", description = "Share link revoked successfully"),
+            @ApiResponse(responseCode = "403", description = "User lacks permission to revoke link"),
+            @ApiResponse(responseCode = "404", description = "Share link not found")
     })
     public ResponseEntity<Map<String, String>> revokeShareLink(
             @PathVariable Long linkId,
@@ -188,15 +170,11 @@ public class ShareController {
      * Delete a share link permanently
      */
     @DeleteMapping("/share-links/{linkId}")
-    @Operation(
-        summary = "Delete share link",
-        description = "Permanently delete a share link (must be creator or document owner)",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Delete share link", description = "Permanently delete a share link (must be creator or document owner)", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "204", description = "Share link deleted successfully"),
-        @ApiResponse(responseCode = "403", description = "User lacks permission to delete link"),
-        @ApiResponse(responseCode = "404", description = "Share link not found")
+            @ApiResponse(responseCode = "204", description = "Share link deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "User lacks permission to delete link"),
+            @ApiResponse(responseCode = "404", description = "Share link not found")
     })
     public ResponseEntity<Void> deleteShareLink(
             @PathVariable Long linkId,
@@ -212,16 +190,12 @@ public class ShareController {
      * Send an email invitation to collaborate on a document
      */
     @PostMapping("/documents/{documentId}/invitations")
-    @Operation(
-        summary = "Send invitation",
-        description = "Invite a user via email to collaborate on a document",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Send invitation", description = "Invite a user via email to collaborate on a document", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Invitation sent successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request or duplicate invitation"),
-        @ApiResponse(responseCode = "403", description = "User lacks permission to share document"),
-        @ApiResponse(responseCode = "404", description = "Document not found")
+            @ApiResponse(responseCode = "201", description = "Invitation sent successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or duplicate invitation"),
+            @ApiResponse(responseCode = "403", description = "User lacks permission to share document"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
     })
     public ResponseEntity<ShareInvitationResponse> sendInvitation(
             @PathVariable Long documentId,
@@ -229,10 +203,10 @@ public class ShareController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         log.info("Sending invitation to {} for document {} by user {}",
-            request.getEmail(), documentId, userDetails.getId());
+                request.getEmail(), documentId, userDetails.getId());
 
         ShareInvitationResponse response = shareService.sendInvitation(
-            documentId, request, userDetails.getId());
+                documentId, request, userDetails.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -241,22 +215,18 @@ public class ShareController {
      * Get all invitations for a document
      */
     @GetMapping("/documents/{documentId}/invitations")
-    @Operation(
-        summary = "List document invitations",
-        description = "Get all invitations for a document (requires at least VIEWER permission)",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "List document invitations", description = "Get all invitations for a document (requires at least VIEWER permission)", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Invitations retrieved successfully"),
-        @ApiResponse(responseCode = "403", description = "User lacks access to document"),
-        @ApiResponse(responseCode = "404", description = "Document not found")
+            @ApiResponse(responseCode = "200", description = "Invitations retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "User lacks access to document"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
     })
     public ResponseEntity<List<ShareInvitationResponse>> getDocumentInvitations(
             @PathVariable Long documentId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        List<ShareInvitationResponse> invitations =
-            shareService.getDocumentInvitations(documentId, userDetails.getId());
+        List<ShareInvitationResponse> invitations = shareService.getDocumentInvitations(documentId,
+                userDetails.getId());
 
         return ResponseEntity.ok(invitations);
     }
@@ -265,19 +235,14 @@ public class ShareController {
      * Get pending invitations for the authenticated user
      */
     @GetMapping("/invitations/pending")
-    @Operation(
-        summary = "Get pending invitations",
-        description = "Get all pending invitations for the authenticated user's email",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Get pending invitations", description = "Get all pending invitations for the authenticated user's email", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Pending invitations retrieved successfully")
+            @ApiResponse(responseCode = "200", description = "Pending invitations retrieved successfully")
     })
     public ResponseEntity<List<ShareInvitationResponse>> getPendingInvitations(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        List<ShareInvitationResponse> invitations =
-            shareService.getPendingInvitations(userDetails.getEmail());
+        List<ShareInvitationResponse> invitations = shareService.getPendingInvitations(userDetails.getEmail());
 
         return ResponseEntity.ok(invitations);
     }
@@ -286,15 +251,11 @@ public class ShareController {
      * Accept an invitation
      */
     @PostMapping("/invitations/{token}/accept")
-    @Operation(
-        summary = "Accept invitation",
-        description = "Accept an invitation to collaborate on a document",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Accept invitation", description = "Accept an invitation to collaborate on a document", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Invitation accepted successfully"),
-        @ApiResponse(responseCode = "400", description = "Invitation is invalid or expired"),
-        @ApiResponse(responseCode = "404", description = "Invitation not found")
+            @ApiResponse(responseCode = "200", description = "Invitation accepted successfully"),
+            @ApiResponse(responseCode = "400", description = "Invitation is invalid or expired"),
+            @ApiResponse(responseCode = "404", description = "Invitation not found")
     })
     public ResponseEntity<ShareInvitationResponse> acceptInvitation(
             @PathVariable String token,
@@ -309,15 +270,11 @@ public class ShareController {
      * Decline an invitation
      */
     @PostMapping("/invitations/{token}/decline")
-    @Operation(
-        summary = "Decline invitation",
-        description = "Decline an invitation to collaborate on a document",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Decline invitation", description = "Decline an invitation to collaborate on a document", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Invitation declined successfully"),
-        @ApiResponse(responseCode = "400", description = "Invitation is invalid"),
-        @ApiResponse(responseCode = "404", description = "Invitation not found")
+            @ApiResponse(responseCode = "200", description = "Invitation declined successfully"),
+            @ApiResponse(responseCode = "400", description = "Invitation is invalid"),
+            @ApiResponse(responseCode = "404", description = "Invitation not found")
     })
     public ResponseEntity<Map<String, String>> declineInvitation(
             @PathVariable String token,
@@ -331,15 +288,11 @@ public class ShareController {
      * Revoke an invitation
      */
     @DeleteMapping("/invitations/{invitationId}")
-    @Operation(
-        summary = "Revoke invitation",
-        description = "Revoke a pending invitation (must be sender or document owner)",
-        security = @SecurityRequirement(name = "JWT")
-    )
+    @Operation(summary = "Revoke invitation", description = "Revoke a pending invitation (must be sender or document owner)", security = @SecurityRequirement(name = "JWT"))
     @ApiResponses({
-        @ApiResponse(responseCode = "204", description = "Invitation revoked successfully"),
-        @ApiResponse(responseCode = "403", description = "User lacks permission to revoke invitation"),
-        @ApiResponse(responseCode = "404", description = "Invitation not found")
+            @ApiResponse(responseCode = "204", description = "Invitation revoked successfully"),
+            @ApiResponse(responseCode = "403", description = "User lacks permission to revoke invitation"),
+            @ApiResponse(responseCode = "404", description = "Invitation not found")
     })
     public ResponseEntity<Void> revokeInvitation(
             @PathVariable Long invitationId,
@@ -349,4 +302,3 @@ public class ShareController {
         return ResponseEntity.noContent().build();
     }
 }
-

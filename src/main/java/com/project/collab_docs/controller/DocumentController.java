@@ -36,9 +36,8 @@ public class DocumentController {
             User user = userDetails.getUser();
 
             Document document = documentService.getDocumentById(documentId, user);
-            DocumentResponse response = documentService.mapToDocumentResponse(document);
-            // Log access for audit trail
-            // auditService.logDocumentAccess(user.getId(), documentId, "VIEW");
+            // Pass userId so response includes the caller's effective role
+            DocumentResponse response = documentService.mapToDocumentResponse(document, user.getId());
 
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {

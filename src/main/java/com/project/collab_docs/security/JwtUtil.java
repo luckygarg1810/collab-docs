@@ -55,6 +55,27 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Generate a short-lived guest token for anonymous (no-auth) share link access.
+     * Guest tokens carry yjsRoomId and role=VIEWER — no user identity.
+     *
+     * @param yjsRoomId The Yjs room the guest may access
+     * @param expiryMs  Token lifetime in milliseconds
+     */
+    public String generateGuestToken(String yjsRoomId, long expiryMs) {
+        Date now = new Date();
+        return Jwts.builder()
+                .issuer("collab_docs")
+                .subject("guest")
+                .claim("guest", true)
+                .claim("yjsRoomId", yjsRoomId)
+                .claim("roles", "VIEWER")
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + expiryMs))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
     // NEW: Helper method to get all claims
     public Claims getClaimsFromToken(String token) {
         return Jwts.parser()

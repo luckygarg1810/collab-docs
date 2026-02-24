@@ -7,6 +7,7 @@ import com.project.collab_docs.enums.Visibility;
 import com.project.collab_docs.exception.PermissionDeniedException;
 import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
+import com.project.collab_docs.repository.DocumentPermissionRepository;
 import com.project.collab_docs.repository.UserRepository;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final PermissionService permissionService;
-
+    private final DocumentPermissionRepository permissionRepository;
 
     @Transactional
     public Document createBlankDocument(String title, Long userId) {
@@ -215,6 +216,38 @@ public class DocumentService {
                 .isDeleted(document.getIsDeleted())
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * Map to DocumentResponse with the requesting user's effective role resolved.
+     */
+    public DocumentResponse mapToDocumentResponse(Document document, Long userId) {
+        Role effectiveRole;
+        if (document.getOwner().getId().equals(userId)) {
+            // Owners have no DocumentPermission row — they are always OWNER.
+            effectiveRole = Role.OWNER;
+        } else {
+            effectiveRole = permissionRepository
+                    .findByDocumentIdAndUserId(document.getId(), userId)
+                    .map(p -> p.getRole())
+                    .orElse(Role.VIEWER);
+        }
+        return DocumentResponse.builder()
+                .id(document.getId())
+                .title(document.getTitle())
+                .fileName(document.getFileName())
+                .contentType(document.getContentType())
+                .fileSize(document.getFileSize())
+                .yjsRoomId(document.getYjsRoomId())
+                .ownerEmail(document.getOwner().getEmail())
+                .ownerName(document.getOwner().getFirstName() + " " + document.getOwner().getLastName())
+                .isTemplate(document.getIsTemplate())
+                .visibility(document.getVisibility())
+                .isDeleted(document.getIsDeleted())
+                .createdAt(document.getCreatedAt())
+                .updatedAt(document.getUpdatedAt())
+                .userRole(effectiveRole)
                 .build();
     }
 
