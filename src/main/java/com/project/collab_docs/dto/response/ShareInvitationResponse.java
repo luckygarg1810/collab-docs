@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 public class ShareInvitationResponse {
 
     private Long id;
+    private String token;
     private String invitedEmail;
     private String invitedUserName;
     private Long invitedUserId;
@@ -42,6 +43,7 @@ public class ShareInvitationResponse {
     public static ShareInvitationResponse from(ShareInvitation invitation) {
         ShareInvitationResponseBuilder builder = ShareInvitationResponse.builder()
                 .id(invitation.getId())
+                .token(invitation.getToken())
                 .invitedEmail(invitation.getInvitedEmail())
                 .role(invitation.getRole())
                 .status(invitation.getStatus())
@@ -49,7 +51,7 @@ public class ShareInvitationResponse {
                 .respondedAt(invitation.getRespondedAt())
                 .expiresAt(invitation.getExpiresAt())
                 .invitedByName(invitation.getInvitedBy().getFirstName() + " " +
-                              invitation.getInvitedBy().getLastName())
+                        invitation.getInvitedBy().getLastName())
                 .invitedById(invitation.getInvitedBy().getId())
                 .message(invitation.getMessage())
                 .documentTitle(invitation.getDocument().getTitle())
@@ -60,8 +62,8 @@ public class ShareInvitationResponse {
         // Add invited user info if available
         if (invitation.getInvitedUser() != null) {
             builder.invitedUserName(invitation.getInvitedUser().getFirstName() + " " +
-                                   invitation.getInvitedUser().getLastName())
-                   .invitedUserId(invitation.getInvitedUser().getId());
+                    invitation.getInvitedUser().getLastName())
+                    .invitedUserId(invitation.getInvitedUser().getId());
         }
 
         return builder.build();
@@ -75,11 +77,10 @@ public class ShareInvitationResponse {
                 .invitedEmail(invitation.getInvitedEmail())
                 .role(invitation.getRole())
                 .invitedByName(invitation.getInvitedBy().getFirstName() + " " +
-                              invitation.getInvitedBy().getLastName())
+                        invitation.getInvitedBy().getLastName())
                 .documentTitle(invitation.getDocument().getTitle())
                 .message(invitation.getMessage())
                 .expiresAt(invitation.getExpiresAt())
                 .build();
     }
 }
-
