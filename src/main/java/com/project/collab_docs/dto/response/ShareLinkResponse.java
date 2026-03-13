@@ -19,6 +19,8 @@ import java.time.LocalDateTime;
 public class ShareLinkResponse {
 
     private Long id;
+    private Long documentId;
+    private String yjsRoomId;
     private String token;
     private String shareUrl;
     private String documentTitle;
@@ -44,6 +46,8 @@ public class ShareLinkResponse {
     public static ShareLinkResponse from(ShareLink link) {
         return ShareLinkResponse.builder()
                 .id(link.getId())
+                .documentId(link.getDocument().getId())
+                .yjsRoomId(link.getDocument().getYjsRoomId())
                 .token(link.getToken())
                 .shareUrl(link.getShareUrl())
                 .documentTitle(link.getDocument().getTitle())
@@ -70,6 +74,9 @@ public class ShareLinkResponse {
      */
     public static ShareLinkResponse publicFrom(ShareLink link) {
         return ShareLinkResponse.builder()
+                .documentId(link.getDocument().getId())
+                .yjsRoomId(link.getDocument().getYjsRoomId())
+                .documentTitle(link.getDocument().getTitle())
                 .role(link.getRole())
                 .requiresAuth(link.getRequiresAuth())
                 .isValid(link.isValid())

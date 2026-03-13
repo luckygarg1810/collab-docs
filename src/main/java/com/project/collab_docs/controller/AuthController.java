@@ -102,7 +102,7 @@ public class AuthController {
         }
 
         @PostMapping("/login")
-        public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest loginRequest,
+        public ResponseEntity<?> loginUser(@RequestBody LoginRequest loginRequest,
                         HttpServletResponse response) {
                 try {
                         // Authenticate user
