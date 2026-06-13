@@ -47,7 +47,6 @@ public class DocumentService {
         Document document = Document.builder()
                 .title(title)
                 .fileName(title + ".docx")
-                .content(null) // No HTML content - TipTap uses Yjs snapshots only
                 .yjsRoomId(yjsRoomId)
                 .owner(owner)
                 .contentType("application/octet-stream") // Yjs binary format
@@ -90,6 +89,7 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public Page<DocumentResponse> getUserDocuments(User user, int page, int size) {
         try {
+            log.info("Get Document API called");
             // Validate pagination parameters
             if (page < 0) {
                 throw new IllegalArgumentException("Page number cannot be negative");

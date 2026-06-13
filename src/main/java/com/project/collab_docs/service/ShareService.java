@@ -6,7 +6,6 @@ import com.project.collab_docs.dto.response.DocumentAccessResponse;
 import com.project.collab_docs.dto.response.ShareInvitationResponse;
 import com.project.collab_docs.dto.response.ShareLinkResponse;
 import com.project.collab_docs.entities.*;
-import com.project.collab_docs.enums.InvitationStatus;
 import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.exception.*;
 import com.project.collab_docs.repository.*;
