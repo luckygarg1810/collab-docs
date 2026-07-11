@@ -1,5 +1,6 @@
 package com.project.collab_docs.controller;
 
+import com.project.collab_docs.dto.request.UpdateTitleRequest;
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.dto.request.CreateDocumentRequest;
@@ -145,6 +146,26 @@ public class DocumentController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new MessageResponse("Error: Failed to update document visibility!"));
         }
+    }
+
+    @PutMapping("/{documentId}/title")
+    public ResponseEntity<?> editTitle(@Valid @RequestBody UpdateTitleRequest request,
+                                       @PathVariable Long documentId, Authentication authentication){
+       try{
+           CustomUserDetails userDetails =(CustomUserDetails) authentication.getPrincipal();
+           User user = userDetails.getUser();
+           documentService.updateTitle(documentId, user, request);
+           log.info("Updated document {} title to: {} by user: {}",
+                   documentId, request.getTitle(), user.getEmail());
+           return ResponseEntity.ok(new MessageResponse("Document title updated successfully"));
+       }catch (IllegalArgumentException e){
+           log.warn("Document title update failed: {}", e.getMessage());
+           return ResponseEntity.badRequest().body(new MessageResponse("Error: " + e.getMessage()));
+       }catch (Exception e){
+           log.error("Error updating document title: {}", e.getMessage());
+           return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).
+                   body(new MessageResponse(("Error: Failed to update title!")));
+       }
     }
 
     @DeleteMapping("/{documentId}")

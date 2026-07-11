@@ -1,5 +1,6 @@
 package com.project.collab_docs.service;
 
+import com.project.collab_docs.dto.request.UpdateTitleRequest;
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.enums.Role;
@@ -359,5 +360,18 @@ public class DocumentService {
             log.error("Error retrieving YJS snapshot for room ID {}: {}", yjsRoomId, e.getMessage(), e);
             throw new RuntimeException("Failed to retrieve YJS snapshot", e);
         }
+    }
+
+    public void updateTitle(Long documentId, User user, UpdateTitleRequest request) {
+        Document document = documentRepository.findByIdAndIsDeletedFalse(documentId).
+                orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+
+        if(!permissionService.hasPermission(documentId, user.getId(), Role.OWNER)){
+            throw new PermissionDeniedException("Only owner can change title!");
+        }
+
+        document.setTitle(request.getTitle());
+        documentRepository.save(document);
+        log.info("Updated document {} title to: {}", documentId, request.getTitle());
     }
 }
