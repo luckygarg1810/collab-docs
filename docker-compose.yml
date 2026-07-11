@@ -71,6 +71,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      yjs-service:
+        condition: service_healthy
     environment:
       # Database
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-collab_docs}
@@ -99,6 +101,9 @@ services:
 
       # Frontend
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+      # Yjs collaboration service (for force-flush on version create)
+      YJS_SERVICE_URL: http://yjs-service:3000
 
       # Spring profiles
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}

@@ -19,6 +19,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.ResponseEntity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -64,8 +68,40 @@ public class VersionService {
      * Maximum number of versions per document (0 = unlimited)
      * Can be configured via application.properties
      */
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Value("${app.version.max-versions-per-document:100}")
     private int maxVersionsPerDocument;
+
+    /**
+     * Base URL of the Yjs Node.js collaboration service.
+     * Used to trigger an immediate snapshot flush before versioning.
+     */
+    @Value("${app.yjs.service-url:http://localhost:3000}")
+    private String yjsServiceUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    /**
+     * Ask the Yjs service to immediately flush the in-memory Y.Doc to PostgreSQL.
+     * This is called before creating a version when the document has no saved snapshot yet
+     * (e.g., within the first 30 seconds of editing).
+     *
+     * @param yjsRoomId The Yjs room ID (= document.yjsRoomId)
+     */
+    private void flushYjsSnapshot(String yjsRoomId) {
+        try {
+            String url = yjsServiceUrl + "/api/documents/" + yjsRoomId + "/save";
+            ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
+            log.info("Yjs force-save triggered for room {}: HTTP {}", yjsRoomId, response.getStatusCode());
+        } catch (Exception e) {
+            // Non-fatal: the Yjs service may not be running locally or the document
+            // may not be in its memory. Log a warning and continue — the caller will
+            // handle the missing snapshot.
+            log.warn("Could not trigger Yjs flush for room {}: {}", yjsRoomId, e.getMessage());
+        }
+    }
 
     /**
      * Create a new version snapshot of a document.
@@ -108,11 +144,24 @@ public class VersionService {
         // Get current Yjs snapshot from document
         byte[] yjsSnapshot = document.getYjsSnapshot();
         if (yjsSnapshot == null || yjsSnapshot.length == 0) {
-            // Try to get from Yjs service
+            // Try to flush the Yjs service immediately so the snapshot reaches PostgreSQL
+            log.info("No PostgreSQL snapshot found for document {}, triggering Yjs force-flush", documentId);
+            flushYjsSnapshot(document.getYjsRoomId());
+
+            // IMPORTANT: Evict the stale L1-cached entity so the next findById
+            // issues a real SELECT and picks up the freshly written yjsSnapshot.
+            entityManager.refresh(document);
+            yjsSnapshot = document.getYjsSnapshot();
+        }
+
+        if (yjsSnapshot == null || yjsSnapshot.length == 0) {
+            // Also try asking the YjsCollaborationService (reads from DB/Redis directly)
             yjsSnapshot = yjsCollaborationService.getYjsSnapshot(document.getYjsRoomId());
-            if (yjsSnapshot == null || yjsSnapshot.length == 0) {
-                throw new IllegalStateException("Document has no content to version. Please make some edits first.");
-            }
+        }
+
+        if (yjsSnapshot == null || yjsSnapshot.length == 0) {
+            throw new IllegalStateException(
+                    "Document has no content to snapshot yet. Please make some edits, wait a moment, and try again.");
         }
 
         // Get next version number

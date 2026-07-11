@@ -87,6 +87,26 @@ app.get('/api/documents/:documentId/users', async (req, res) => {
     }
 });
 
+// Force-save endpoint — called by Spring before creating a version
+// Flushes the in-memory Y.Doc immediately to PostgreSQL so the snapshot is fresh
+app.post('/api/documents/:documentId/save', async (req, res) => {
+    try {
+        const { documentId } = req.params;
+        const success = await saveDocument(documentId, true); // forceSave=true bypasses lock
+        if (success) {
+            logger.info('Force-save completed via HTTP', { documentId });
+            res.json({ success: true, message: 'Document saved successfully' });
+        } else {
+            // Document not in memory (no active session) — that's fine, PostgreSQL already has it
+            logger.info('Force-save skipped — document not in memory', { documentId });
+            res.json({ success: false, message: 'Document not in active memory; existing snapshot is current' });
+        }
+    } catch (error) {
+        logger.error('Force-save failed', { error: error.message });
+        res.status(500).json({ error: 'Failed to save document' });
+    }
+});
+
 // WebSocket upgrade handler with authentication
 server.on('upgrade', (request, socket, head) => {
     // Check WebSocket origin against allowed origins
