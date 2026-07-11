@@ -4,14 +4,19 @@ import com.project.collab_docs.dto.request.*;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.dto.response.AuthResponse;
 import com.project.collab_docs.dto.response.MessageResponse;
+import com.project.collab_docs.exception.InvalidRefreshTokenException;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.security.JwtUtil;
 import com.project.collab_docs.service.PasswordResetService;
+import com.project.collab_docs.service.RefreshTokenService;
 import com.project.collab_docs.service.UserRegistrationService;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -24,16 +29,24 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
 
+        private static final String REFRESH_COOKIE_NAME = "refresh_token";
+
         private final AuthenticationManager authenticationManager;
         private final JwtUtil jwtUtil;
         private final UserRegistrationService userRegistrationService;
         private final PasswordResetService passwordResetService;
+        private final RefreshTokenService refreshTokenService;
+
+        @Value("${app.jwt.refresh-expiration-ms}")
+        private long refreshExpirationMs;
 
         @PostMapping("/register")
         public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
@@ -120,7 +133,11 @@ public class AuthController {
                         // Create HTTP-only cookie for JWT
                         setJwtCookie(response, jwtToken);
 
+                        // Issue a long-lived, server-tracked refresh token so the access token
+                        // above can be short-lived and silently renewed later
                         User user = userDetails.getUser();
+                        String rawRefreshToken = refreshTokenService.issueToken(user);
+                        setRefreshTokenCookie(response, rawRefreshToken);
 
                         AuthResponse authResponse = AuthResponse.builder()
                                         .id(user.getId())
@@ -197,21 +214,19 @@ public class AuthController {
         }
 
         @PostMapping("/logout")
-        public ResponseEntity<?> logoutUser(HttpServletResponse response) {
+        public ResponseEntity<?> logoutUser(HttpServletRequest request, HttpServletResponse response) {
                 try {
+                        // Revoke the refresh token server-side so a copy of the cookie
+                        // (e.g. captured before logout) can't be replayed afterwards
+                        String rawRefreshToken = extractCookie(request, REFRESH_COOKIE_NAME);
+                        refreshTokenService.revoke(rawRefreshToken);
+
                         // Clear authentication context
                         SecurityContextHolder.clearContext();
 
-                        // Clear JWT cookie
-                        ResponseCookie deleteCookie = ResponseCookie.from("jwt", "")
-                                        .httpOnly(true)
-                                        .secure(true)
-                                        .path("/")
-                                        .sameSite("Lax")
-                                        .maxAge(0)
-                                        .build();
+                        clearCookie(response, "jwt");
+                        clearCookie(response, REFRESH_COOKIE_NAME);
 
-                        response.setHeader(HttpHeaders.SET_COOKIE, deleteCookie.toString());
                         log.info("User logged out successfully");
                         return ResponseEntity.ok(new MessageResponse("Logout successful!"));
 
@@ -250,30 +265,45 @@ public class AuthController {
                 }
         }
 
+        /**
+         * Silently renew an expired (or about to expire) access token.
+         *
+         * Deliberately does NOT depend on {@link Authentication} — that would
+         * require the access JWT to still be valid, defeating the point of a
+         * refresh token, which exists specifically to recover once it isn't.
+         * Instead this reads the separate, longer-lived refresh_token cookie.
+         *
+         * Any failure (missing/expired/revoked/reused token) throws
+         * InvalidRefreshTokenException, mapped to 401 by GlobalExceptionHandler —
+         * the frontend interceptor treats that as "session is really over."
+         */
         @PostMapping("/refresh")
-        public ResponseEntity<?> refreshToken(HttpServletResponse response, Authentication authentication) {
-                try {
-                        if (authentication == null || !authentication.isAuthenticated()) {
-                                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                                                .body(new MessageResponse("Error: User not authenticated!"));
-                        }
-
-                        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-
-                        // Generate new JWT token
-                        String newJwtToken = jwtUtil.generateToken(userDetails);
-
-                        // Create new HTTP-only cookie for JWT
-                        setJwtCookie(response, newJwtToken);
-
-                        log.info("Token refreshed successfully for user: {}", userDetails.getEmail());
-                        return ResponseEntity.ok(new MessageResponse("Token refreshed successfully!"));
-
-                } catch (Exception e) {
-                        log.error("Token refresh error: {}", e.getMessage());
-                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                        .body(new MessageResponse("Error: Token refresh failed!"));
+        public ResponseEntity<?> refreshToken(HttpServletRequest request, HttpServletResponse response) {
+                String rawRefreshToken = extractCookie(request, REFRESH_COOKIE_NAME);
+                if (rawRefreshToken == null) {
+                        throw new InvalidRefreshTokenException("No refresh token present");
                 }
+
+                RefreshTokenService.RotationResult rotation = refreshTokenService.validateAndRotate(rawRefreshToken);
+                User user = rotation.user();
+
+                String newJwtToken = jwtUtil.generateToken(new CustomUserDetails(user));
+                setJwtCookie(response, newJwtToken);
+                setRefreshTokenCookie(response, rotation.rawToken());
+
+                log.info("Token refreshed successfully for user: {}", user.getEmail());
+
+                AuthResponse authResponse = AuthResponse.builder()
+                                .id(user.getId())
+                                .email(user.getEmail())
+                                .firstName(user.getFirstName())
+                                .lastName(user.getLastName())
+                                .message("Token refreshed successfully!")
+                                .token(newJwtToken) // Included for WebSocket auth (Yjs service cannot read
+                                                    // HttpOnly cookies)
+                                .build();
+
+                return ResponseEntity.ok(authResponse);
         }
 
         @PostMapping("/validate")
@@ -302,7 +332,51 @@ public class AuthController {
                                 .maxAge(jwtUtil.getExpirationTime() / 1000) // in seconds
                                 .build();
 
-                response.setHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
+                response.addHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
+        }
+
+        private void setRefreshTokenCookie(HttpServletResponse response, String rawRefreshToken) {
+                ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE_NAME, rawRefreshToken)
+                                .httpOnly(true)
+                                .secure(false) // Set to true in production (HTTPS only) — must match setJwtCookie
+                                // Scoped to /api/auth so this long-lived token is never sent on
+                                // ordinary API calls, only to the refresh/logout endpoints that need it
+                                .path("/api/auth")
+                                .sameSite("Lax")
+                                .maxAge(refreshExpirationMs / 1000)
+                                .build();
+
+                response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+        }
+
+        /**
+         * Overwrite a cookie with an immediately-expired one of the same name/path
+         * so the browser deletes it. Must mirror the attributes (path, secure) used
+         * when the cookie was originally set, or the browser will treat it as a
+         * different cookie and leave the original in place.
+         */
+        private void clearCookie(HttpServletResponse response, String name) {
+                String path = REFRESH_COOKIE_NAME.equals(name) ? "/api/auth" : "/";
+                ResponseCookie deleteCookie = ResponseCookie.from(name, "")
+                                .httpOnly(true)
+                                .secure(false) // must match the flag used when the cookie was set
+                                .path(path)
+                                .sameSite("Lax")
+                                .maxAge(0)
+                                .build();
+
+                response.addHeader(HttpHeaders.SET_COOKIE, deleteCookie.toString());
+        }
+
+        private String extractCookie(HttpServletRequest request, String name) {
+                if (request.getCookies() == null) {
+                        return null;
+                }
+                return Arrays.stream(request.getCookies())
+                                .filter(cookie -> name.equals(cookie.getName()))
+                                .findFirst()
+                                .map(Cookie::getValue)
+                                .orElse(null);
         }
 
 }

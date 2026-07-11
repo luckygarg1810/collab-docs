@@ -92,6 +92,21 @@ public class GlobalExceptionHandler {
                 return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
 
+        @ExceptionHandler(InvalidRefreshTokenException.class)
+        public ResponseEntity<ErrorResponse> handleInvalidRefreshTokenException(
+                        InvalidRefreshTokenException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.UNAUTHORIZED.value(),
+                                "Invalid Refresh Token",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Invalid refresh token: {}", ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
+        }
+
         @ExceptionHandler(BadCredentialsException.class)
         public ResponseEntity<ErrorResponse> handleBadCredentialsException(
                         BadCredentialsException ex, WebRequest request) {
