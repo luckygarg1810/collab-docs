@@ -32,41 +32,27 @@ public class DocumentController {
     @GetMapping
     public ResponseEntity<?> getDocument(@RequestParam(value = "document_id") Long documentId,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            User user = userDetails.getUser();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
-            Document document = documentService.getDocumentById(documentId, user);
-            // Pass userId so response includes the caller's effective role
-            DocumentResponse response = documentService.mapToDocumentResponse(document, user.getId());
+        Document document = documentService.getDocumentById(documentId, user);
+        // Pass userId so response includes the caller's effective role
+        DocumentResponse response = documentService.mapToDocumentResponse(document, user.getId());
 
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error retrieving document: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to retrieve document!"));
-        }
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/user/documents")
     public ResponseEntity<?> getUserDocuments(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            User user = userDetails.getUser();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
-            Page<DocumentResponse> documents = documentService.getUserDocuments(
-                    user, page, size);
+        Page<DocumentResponse> documents = documentService.getUserDocuments(
+                user, page, size);
 
-            return ResponseEntity.ok(documents);
-        } catch (Exception e) {
-            log.error("Error retrieving user documents: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to retrieve documents!"));
-        }
+        return ResponseEntity.ok(documents);
     }
 
     @PostMapping("/create")
@@ -128,67 +114,37 @@ public class DocumentController {
             @PathVariable Long documentId,
             @Valid @RequestBody UpdateVisibilityRequest request,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            User user = userDetails.getUser();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
-            documentService.updateDocumentVisibility(documentId, request.getVisibility(), user);
-            log.info("Updated document {} visibility to: {} by user: {}",
-                    documentId, request.getVisibility(), user.getEmail());
-            return ResponseEntity.ok(new MessageResponse("Document visibility updated successfully!"));
-
-        } catch (IllegalArgumentException e) {
-            log.warn("Document visibility update failed: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error updating document visibility: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to update document visibility!"));
-        }
+        documentService.updateDocumentVisibility(documentId, request.getVisibility(), user);
+        log.info("Updated document {} visibility to: {} by user: {}",
+                documentId, request.getVisibility(), user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document visibility updated successfully!"));
     }
 
     @PutMapping("/{documentId}/title")
     public ResponseEntity<?> editTitle(@Valid @RequestBody UpdateTitleRequest request,
                                        @PathVariable Long documentId, Authentication authentication){
-       try{
-           CustomUserDetails userDetails =(CustomUserDetails) authentication.getPrincipal();
-           User user = userDetails.getUser();
-           documentService.updateTitle(documentId, user, request);
-           log.info("Updated document {} title to: {} by user: {}",
-                   documentId, request.getTitle(), user.getEmail());
-           return ResponseEntity.ok(new MessageResponse("Document title updated successfully"));
-       }catch (IllegalArgumentException e){
-           log.warn("Document title update failed: {}", e.getMessage());
-           return ResponseEntity.badRequest().body(new MessageResponse("Error: " + e.getMessage()));
-       }catch (Exception e){
-           log.error("Error updating document title: {}", e.getMessage());
-           return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).
-                   body(new MessageResponse(("Error: Failed to update title!")));
-       }
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.updateTitle(documentId, user, request);
+        log.info("Updated document {} title to: {} by user: {}",
+                documentId, request.getTitle(), user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document title updated successfully"));
     }
 
     @DeleteMapping("/{documentId}")
     public ResponseEntity<?> deleteDocument(
             @PathVariable Long documentId,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            User user = userDetails.getUser();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
-            documentService.softDeleteDocument(documentId, user);
-            log.info("Deleted document {} by user: {}", documentId, user.getEmail());
-            return ResponseEntity.ok(new MessageResponse("Document deleted successfully!"));
-
-        } catch (IllegalArgumentException e) {
-            log.warn("Document deletion failed: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error deleting document: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to delete document!"));
-        }
+        documentService.softDeleteDocument(documentId, user);
+        log.info("Deleted document {} by user: {}", documentId, user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document deleted successfully!"));
     }
 
     @PostMapping("/yjs-snapshot")

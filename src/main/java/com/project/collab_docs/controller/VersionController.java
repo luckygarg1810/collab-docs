@@ -78,10 +78,6 @@ public class VersionController {
             log.warn("Version creation failed: {}", e.getMessage());
             return ResponseEntity.badRequest()
                     .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error creating version for document {}: {}", documentId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to create version"));
         }
     }
 
@@ -99,24 +95,18 @@ public class VersionController {
             @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            Long userId = userDetails.getUser().getId();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUser().getId();
 
-            if (page < 0 || size <= 0) {
-                // Return all versions without pagination
-                List<VersionResponse> versions = versionService.listVersions(documentId, userId);
-                return ResponseEntity.ok(versions);
-            } else {
-                // Return paginated versions
-                Pageable pageable = PageRequest.of(page, size);
-                Page<VersionResponse> versions = versionService.listVersionsPaginated(documentId, userId, pageable);
-                return ResponseEntity.ok(versions);
-            }
-        } catch (Exception e) {
-            log.error("Error listing versions for document {}: {}", documentId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to list versions"));
+        if (page < 0 || size <= 0) {
+            // Return all versions without pagination
+            List<VersionResponse> versions = versionService.listVersions(documentId, userId);
+            return ResponseEntity.ok(versions);
+        } else {
+            // Return paginated versions
+            Pageable pageable = PageRequest.of(page, size);
+            Page<VersionResponse> versions = versionService.listVersionsPaginated(documentId, userId, pageable);
+            return ResponseEntity.ok(versions);
         }
     }
 
@@ -132,17 +122,11 @@ public class VersionController {
     public ResponseEntity<?> getVersion(
             @PathVariable Long versionId,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            Long userId = userDetails.getUser().getId();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUser().getId();
 
-            VersionContentResponse version = versionService.getVersionContent(versionId, userId);
-            return ResponseEntity.ok(version);
-        } catch (Exception e) {
-            log.error("Error getting version {}: {}", versionId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to get version"));
-        }
+        VersionContentResponse version = versionService.getVersionContent(versionId, userId);
+        return ResponseEntity.ok(version);
     }
 
     /**
@@ -175,10 +159,6 @@ public class VersionController {
             log.warn("Version restoration failed: {}", e.getMessage());
             return ResponseEntity.badRequest()
                     .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error restoring version {}: {}", versionId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to restore version"));
         }
     }
 
@@ -208,10 +188,6 @@ public class VersionController {
             log.warn("Version deletion failed: {}", e.getMessage());
             return ResponseEntity.badRequest()
                     .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error deleting version {}: {}", versionId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to delete version"));
         }
     }
 
@@ -228,28 +204,18 @@ public class VersionController {
             @PathVariable Long documentId,
             @Parameter(description = "Number of recent versions to keep") @RequestParam(defaultValue = "10") int keepCount,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            Long userId = userDetails.getUser().getId();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUser().getId();
 
-            int deletedCount = versionService.deleteOldVersions(documentId, keepCount, userId);
+        int deletedCount = versionService.deleteOldVersions(documentId, keepCount, userId);
 
-            log.info("Cleaned up {} versions for document {} by user {}", deletedCount, documentId, userId);
+        log.info("Cleaned up {} versions for document {} by user {}", deletedCount, documentId, userId);
 
-            return ResponseEntity.ok(Map.of(
-                    "message", "Cleanup completed successfully",
-                    "deletedCount", deletedCount,
-                    "keptCount", keepCount
-            ));
-        } catch (IllegalArgumentException e) {
-            log.warn("Version cleanup failed: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(new MessageResponse("Error: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error cleaning up versions for document {}: {}", documentId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to cleanup versions"));
-        }
+        return ResponseEntity.ok(Map.of(
+                "message", "Cleanup completed successfully",
+                "deletedCount", deletedCount,
+                "keptCount", keepCount
+        ));
     }
 
     /**
@@ -264,23 +230,16 @@ public class VersionController {
     public ResponseEntity<?> getVersionStatistics(
             @PathVariable Long documentId,
             Authentication authentication) {
-        try {
-            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-            Long userId = userDetails.getUser().getId();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUser().getId();
 
-            VersionService.VersionStatistics stats = versionService.getVersionStatistics(documentId, userId);
+        VersionService.VersionStatistics stats = versionService.getVersionStatistics(documentId, userId);
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("versionCount", stats.count);
-            response.put("totalStorageBytes", stats.totalStorageBytes);
-            response.put("formattedStorage", stats.getFormattedStorage());
+        Map<String, Object> response = new HashMap<>();
+        response.put("versionCount", stats.count);
+        response.put("totalStorageBytes", stats.totalStorageBytes);
+        response.put("formattedStorage", stats.getFormattedStorage());
 
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error getting version statistics for document {}: {}", documentId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new MessageResponse("Error: Failed to get statistics"));
-        }
+        return ResponseEntity.ok(response);
     }
 }
-
