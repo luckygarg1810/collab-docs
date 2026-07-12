@@ -29,4 +29,6 @@ public class DocumentResponse {
     private LocalDateTime updatedAt;
     /** Effective role of the requesting user (OWNER / EDITOR / VIEWER) */
     private Role userRole;
+    /** Whether the requesting user has starred this document */
+    private Boolean isStarred;
 }

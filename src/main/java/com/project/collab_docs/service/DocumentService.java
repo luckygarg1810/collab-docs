@@ -11,7 +11,9 @@ import com.project.collab_docs.exception.PermissionDeniedException;
 import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.repository.DocumentPermissionRepository;
+import com.project.collab_docs.repository.StarredDocumentRepository;
 import com.project.collab_docs.repository.UserRepository;
+import com.project.collab_docs.entities.StarredDocument;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class DocumentService {
     private final UserRepository userRepository;
     private final PermissionService permissionService;
     private final DocumentPermissionRepository permissionRepository;
+    private final StarredDocumentRepository starredDocumentRepository;
 
     @Transactional
     public Document createBlankDocument(String title, Long userId) {
@@ -109,6 +113,17 @@ public class DocumentService {
                 case OWNED -> permissionService.getUserDocumentsByRole(user.getId(), Role.OWNER);
                 case SHARED -> permissionService.getSharedDocumentsForUser(user.getId());
                 case ALL -> permissionService.getUserAccessibleDocuments(user.getId());
+                case STARRED -> {
+                    // Intersect with current access so a star left behind after
+                    // access was revoked doesn't resurface a document the user
+                    // can no longer open.
+                    var accessibleIds = permissionService.getUserAccessibleDocuments(user.getId()).stream()
+                            .map(Document::getId)
+                            .collect(Collectors.toSet());
+                    yield starredDocumentRepository.findStarredDocumentsByUserId(user.getId()).stream()
+                            .filter(doc -> accessibleIds.contains(doc.getId()))
+                            .toList();
+                }
             };
 
             // Manual pagination since we're working with a List
@@ -229,6 +244,7 @@ public class DocumentService {
                 .isDeleted(document.getIsDeleted())
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt())
+                .isStarred(false) // freshly created document, can't be starred yet
                 .build();
     }
 
@@ -246,6 +262,7 @@ public class DocumentService {
                     .map(DocumentPermission::getRole)
                     .orElse(Role.VIEWER);
         }
+        boolean isStarred = starredDocumentRepository.existsByDocumentIdAndUserId(document.getId(), userId);
         return DocumentResponse.builder()
                 .id(document.getId())
                 .title(document.getTitle())
@@ -261,7 +278,29 @@ public class DocumentService {
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt())
                 .userRole(effectiveRole)
+                .isStarred(isStarred)
                 .build();
+    }
+
+    @Transactional
+    public void starDocument(Long documentId, User user) {
+        if (!permissionService.hasPermission(documentId, user.getId(), Role.VIEWER)) {
+            throw new PermissionDeniedException("You don't have access to this document");
+        }
+        if (starredDocumentRepository.existsByDocumentIdAndUserId(documentId, user.getId())) {
+            return; // already starred — idempotent
+        }
+        Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+        starredDocumentRepository.save(StarredDocument.builder()
+                .document(document)
+                .user(user)
+                .build());
+    }
+
+    @Transactional
+    public void unstarDocument(Long documentId, User user) {
+        starredDocumentRepository.deleteByDocumentIdAndUserId(documentId, user.getId());
     }
 
     // Note: HTML content extraction methods removed

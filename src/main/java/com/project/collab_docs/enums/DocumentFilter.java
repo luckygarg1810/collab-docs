@@ -7,5 +7,6 @@ package com.project.collab_docs.enums;
 public enum DocumentFilter {
     ALL,
     OWNED,
-    SHARED
+    SHARED,
+    STARRED
 }

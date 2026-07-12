@@ -158,6 +158,26 @@ public class DocumentController {
         return ResponseEntity.ok(new MessageResponse("Document title updated successfully"));
     }
 
+    @PostMapping("/{documentId}/star")
+    public ResponseEntity<?> starDocument(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.starDocument(documentId, user);
+        log.info("Document {} starred by user: {}", documentId, user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document starred successfully"));
+    }
+
+    @DeleteMapping("/{documentId}/star")
+    public ResponseEntity<?> unstarDocument(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.unstarDocument(documentId, user);
+        log.info("Document {} unstarred by user: {}", documentId, user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document unstarred successfully"));
+    }
+
     @DeleteMapping("/{documentId}")
     public ResponseEntity<?> deleteDocument(
             @PathVariable Long documentId,
