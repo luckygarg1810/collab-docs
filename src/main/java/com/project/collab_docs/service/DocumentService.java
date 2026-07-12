@@ -2,6 +2,7 @@ package com.project.collab_docs.service;
 
 import com.project.collab_docs.dto.request.UpdateTitleRequest;
 import com.project.collab_docs.entities.Document;
+import com.project.collab_docs.entities.DocumentPermission;
 import com.project.collab_docs.entities.User;
 import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.enums.Visibility;
@@ -88,7 +89,7 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DocumentResponse> getUserDocuments(User user, int page, int size) {
+    public Page<DocumentResponse> getUserDocuments(User user, boolean ownedDocuments,int page, int size) {
         try {
             log.info("Get Document API called");
             // Validate pagination parameters
@@ -100,7 +101,8 @@ public class DocumentService {
             }
 
             // Get all documents user can access (owned + shared via RBAC)
-            var accessibleDocuments = permissionService.getUserAccessibleDocuments(user.getId());
+            var accessibleDocuments = !ownedDocuments ? permissionService.getUserAccessibleDocuments(user.getId()) :
+                    permissionService.getUserDocumentsByRole(user.getId(), Role.OWNER);
 
             // Manual pagination since we're working with a List
             int start = page * size;
@@ -110,9 +112,11 @@ public class DocumentService {
                     Math.min(start, accessibleDocuments.size()),
                     end);
 
-            // Convert to DocumentResponse
+            // Convert to DocumentResponse, resolving the caller's role on each
+            // (owner vs. shared-with) so the frontend can rely on the backend
+            // for ownership instead of comparing emails client-side.
             var documentResponses = paginatedDocs.stream()
-                    .map(this::mapToDocumentResponse)
+                    .map(doc -> mapToDocumentResponse(doc, user.getId()))
                     .toList();
 
             // Create Page object
@@ -135,6 +139,8 @@ public class DocumentService {
             throw new RuntimeException("Failed to retrieve user documents", e);
         }
     }
+
+
 
     @Transactional
     public Document uploadDocument(MultipartFile file, String title, User owner) throws IOException {
@@ -231,7 +237,7 @@ public class DocumentService {
         } else {
             effectiveRole = permissionRepository
                     .findByDocumentIdAndUserId(document.getId(), userId)
-                    .map(p -> p.getRole())
+                    .map(DocumentPermission::getRole)
                     .orElse(Role.VIEWER);
         }
         return DocumentResponse.builder()

@@ -45,12 +45,12 @@ public class DocumentController {
     @GetMapping("/user/documents")
     public ResponseEntity<?> getUserDocuments(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "false", required = false) boolean ownedDocuments,
             Authentication authentication) {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         User user = userDetails.getUser();
-
         Page<DocumentResponse> documents = documentService.getUserDocuments(
-                user, page, size);
+                user, ownedDocuments, page, size);
 
         return ResponseEntity.ok(documents);
     }
