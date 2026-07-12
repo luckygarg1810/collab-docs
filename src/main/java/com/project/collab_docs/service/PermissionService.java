@@ -251,6 +251,17 @@ public class PermissionService {
     }
 
     /**
+     * Get documents which are shared with user
+     */
+    public List<Document> getSharedDocumentsForUser(Long userId) {
+        return permissionRepository.findActivePermissionsByUserId(userId)
+                .stream()
+                .filter(p -> p.getRole() != Role.OWNER)
+                .map(DocumentPermission::getDocument)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Convert DocumentPermission to CollaboratorResponse DTO
      */
     private CollaboratorResponse toCollaboratorResponse(DocumentPermission permission) {

@@ -4,6 +4,7 @@ import com.project.collab_docs.dto.request.UpdateTitleRequest;
 import com.project.collab_docs.entities.Document;
 import com.project.collab_docs.entities.DocumentPermission;
 import com.project.collab_docs.entities.User;
+import com.project.collab_docs.enums.DocumentFilter;
 import com.project.collab_docs.enums.Role;
 import com.project.collab_docs.enums.Visibility;
 import com.project.collab_docs.exception.PermissionDeniedException;
@@ -22,6 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -89,7 +93,7 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DocumentResponse> getUserDocuments(User user, boolean ownedDocuments,int page, int size) {
+    public Page<DocumentResponse> getUserDocuments(User user, DocumentFilter filter, int page, int size) {
         try {
             log.info("Get Document API called");
             // Validate pagination parameters
@@ -100,9 +104,12 @@ public class DocumentService {
                 throw new IllegalArgumentException("Page size must be between 1 and 100");
             }
 
-            // Get all documents user can access (owned + shared via RBAC)
-            var accessibleDocuments = !ownedDocuments ? permissionService.getUserAccessibleDocuments(user.getId()) :
-                    permissionService.getUserDocumentsByRole(user.getId(), Role.OWNER);
+            // Get the requested subset of documents the user can access (RBAC-checked)
+            List<Document> accessibleDocuments = switch (filter) {
+                case OWNED -> permissionService.getUserDocumentsByRole(user.getId(), Role.OWNER);
+                case SHARED -> permissionService.getSharedDocumentsForUser(user.getId());
+                case ALL -> permissionService.getUserAccessibleDocuments(user.getId());
+            };
 
             // Manual pagination since we're working with a List
             int start = page * size;
@@ -166,7 +173,6 @@ public class DocumentService {
                 .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(fileName))
                 .fileName(fileName)
                 .contentType(originalContentType) // Store original file type for reference
-                .content(null) // No HTML content - frontend handles conversion
                 .fileSize(file.getSize())
                 .yjsRoomId(yjsRoomId)
                 .owner(owner)
