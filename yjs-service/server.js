@@ -28,6 +28,7 @@ const {
     getActiveUsers,
     closeRedis
 } = require('./services/redisAdapter');
+const { startDocumentEventSubscriber } = require('./services/documentEventSubscriber');
 
 const app = express();
 const server = http.createServer(app);
@@ -64,6 +65,10 @@ const MESSAGE_SYNC_UPDATE = 2; // Incremental update
 
 // Track connections per document
 const documentConnections = new Map();
+
+// Reacts to DOCUMENT_DELETED / PERMISSION_REVOKED published by the backend by
+// closing the relevant active session(s) in real time
+const documentEventSubscriber = startDocumentEventSubscriber(documentConnections);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -456,8 +461,9 @@ async function shutdown() {
         logger.info('HTTP server closed');
     });
 
-    // Close Redis connection
+    // Close Redis connections
     await closeRedis();
+    await documentEventSubscriber.quit();
 
     logger.info('Graceful shutdown complete');
     process.exit(0);
