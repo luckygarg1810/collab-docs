@@ -178,6 +178,15 @@ public class DocumentController {
         return ResponseEntity.ok(new MessageResponse("Document unstarred successfully"));
     }
 
+    @PostMapping("/{documentId}/open")
+    public ResponseEntity<?> recordDocumentOpen(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.recordDocumentOpen(documentId, user);
+        return ResponseEntity.ok(new MessageResponse("Recorded"));
+    }
+
     @DeleteMapping("/{documentId}")
     public ResponseEntity<?> deleteDocument(
             @PathVariable Long documentId,

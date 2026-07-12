@@ -31,4 +31,6 @@ public class DocumentResponse {
     private Role userRole;
     /** Whether the requesting user has starred this document */
     private Boolean isStarred;
+    /** When the requesting user last opened this document (null if never) */
+    private LocalDateTime lastOpenedAt;
 }

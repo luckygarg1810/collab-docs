@@ -8,5 +8,6 @@ public enum DocumentFilter {
     ALL,
     OWNED,
     SHARED,
-    STARRED
+    STARRED,
+    RECENT
 }

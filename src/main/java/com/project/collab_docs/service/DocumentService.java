@@ -12,8 +12,10 @@ import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.repository.DocumentPermissionRepository;
 import com.project.collab_docs.repository.StarredDocumentRepository;
+import com.project.collab_docs.repository.RecentDocumentViewRepository;
 import com.project.collab_docs.repository.UserRepository;
 import com.project.collab_docs.entities.StarredDocument;
+import com.project.collab_docs.entities.RecentDocumentView;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -41,6 +44,7 @@ public class DocumentService {
     private final PermissionService permissionService;
     private final DocumentPermissionRepository permissionRepository;
     private final StarredDocumentRepository starredDocumentRepository;
+    private final RecentDocumentViewRepository recentDocumentViewRepository;
 
     @Transactional
     public Document createBlankDocument(String title, Long userId) {
@@ -124,6 +128,12 @@ public class DocumentService {
                             .filter(doc -> accessibleIds.contains(doc.getId()))
                             .toList();
                 }
+                case RECENT -> recentDocumentViewRepository
+                        .findTop10ByUserIdOrderByLastOpenedAtDesc(user.getId()).stream()
+                        .map(RecentDocumentView::getDocument)
+                        .filter(doc -> !doc.getIsDeleted()
+                                && permissionService.hasPermission(doc.getId(), user.getId(), Role.VIEWER))
+                        .toList();
             };
 
             // Manual pagination since we're working with a List
@@ -263,6 +273,10 @@ public class DocumentService {
                     .orElse(Role.VIEWER);
         }
         boolean isStarred = starredDocumentRepository.existsByDocumentIdAndUserId(document.getId(), userId);
+        LocalDateTime lastOpenedAt = recentDocumentViewRepository
+                .findByUserIdAndDocumentId(userId, document.getId())
+                .map(RecentDocumentView::getLastOpenedAt)
+                .orElse(null);
         return DocumentResponse.builder()
                 .id(document.getId())
                 .title(document.getTitle())
@@ -279,7 +293,16 @@ public class DocumentService {
                 .updatedAt(document.getUpdatedAt())
                 .userRole(effectiveRole)
                 .isStarred(isStarred)
+                .lastOpenedAt(lastOpenedAt)
                 .build();
+    }
+
+    @Transactional
+    public void recordDocumentOpen(Long documentId, User user) {
+        if (!permissionService.hasPermission(documentId, user.getId(), Role.VIEWER)) {
+            throw new PermissionDeniedException("You don't have access to this document");
+        }
+        recentDocumentViewRepository.recordOpen(user.getId(), documentId);
     }
 
     @Transactional
