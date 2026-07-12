@@ -74,6 +74,16 @@ services:
       yjs-service:
         condition: service_healthy
     environment:
+      # Pins LocalDateTime.now() (and everything derived from it — createdAt,
+      # updatedAt, deletedAt, etc.) to IST wall-clock time. Without this the
+      # container defaults to UTC, but those fields carry no timezone marker
+      # when serialized, so the frontend's date-fns silently reinterprets
+      # them as browser-local (IST) — every "X ago" display was off by
+      # exactly the UTC/IST gap. Band-aid, not a real fix: this only works
+      # because every user of this app is in IST. The real fix is switching
+      # these fields to Instant, which is timezone-unambiguous.
+      TZ: Asia/Kolkata
+
       # Database
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-collab_docs}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
