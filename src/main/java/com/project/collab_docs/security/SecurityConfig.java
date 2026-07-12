@@ -50,6 +50,7 @@ public class SecurityConfig {
                         // Gated instead by the X-Internal-Service-Key header check in
                         // DocumentController — see InvalidServiceKeyException.
                         .requestMatchers("/api/documents/yjs-snapshot", "/api/documents/yjs-snapshot/**").permitAll()
+                        .requestMatchers("/api/documents/access-check").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 

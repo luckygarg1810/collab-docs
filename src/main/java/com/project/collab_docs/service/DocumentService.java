@@ -94,6 +94,23 @@ public class DocumentService {
         return savedDocument;
     }
 
+    /**
+     * Used by the yjs-service's periodic per-session hardcheck (every 15
+     * min) to confirm a still-open WebSocket's user still has access —
+     * defense-in-depth for any permission change that doesn't go through a
+     * code path that publishes a document-events broadcast. Takes the
+     * yjsRoomId (not the numeric document id) because that's all a
+     * WebSocket connection in yjs-service actually knows about the
+     * document it's attached to. A missing/deleted room resolves to no
+     * access, which correctly triggers a kick rather than an error.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasViewerAccess(String yjsRoomId, Long userId) {
+        return documentRepository.findByYjsRoomIdAndIsDeletedFalse(yjsRoomId)
+                .map(document -> permissionService.hasPermission(document.getId(), userId, Role.VIEWER))
+                .orElse(false);
+    }
+
     @Transactional(readOnly = true)
     public Document getDocumentById(Long documentId, User requestingUser) {
         Document document = documentRepository.findByIdAndIsDeletedFalse(documentId)

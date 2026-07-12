@@ -28,7 +28,8 @@ const {
     getActiveUsers,
     closeRedis
 } = require('./services/redisAdapter');
-const { startDocumentEventSubscriber } = require('./services/documentEventSubscriber');
+const { startDocumentEventSubscriber, ACCESS_LOST_CLOSE_CODE } = require('./services/documentEventSubscriber');
+const { checkAccess } = require('./services/accessCheckClient');
 
 const app = express();
 const server = http.createServer(app);
@@ -57,6 +58,12 @@ app.use(cors({
 // Message types from y-protocols
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
+
+// Defense-in-depth: re-verify each active session's access every 15 min,
+// independent of the real-time document-events broadcast (see
+// startDocumentEventSubscriber) — catches permission changes that don't go
+// through a code path that publishes an event.
+const ACCESS_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 // Sync message types
 const MESSAGE_SYNC_STEP1 = 0; // Client sends state vector
@@ -203,6 +210,22 @@ wss.on('connection', async (ws, request) => {
     ws.userInfo = userInfo;
     ws.isAlive = true;
 
+    // Periodic access hardcheck — skipped for guests, who have no real DB
+    // permission row to check against (they're scoped by the guest token
+    // itself, verified once at connect time).
+    if (!userInfo.isGuest) {
+        ws.accessCheckInterval = setInterval(async () => {
+            const hasAccess = await checkAccess(documentId, userInfo.userId);
+            if (!hasAccess) {
+                logger.info('Periodic access check failed, closing session', {
+                    documentId,
+                    userId: userInfo.userId
+                });
+                ws.close(ACCESS_LOST_CLOSE_CODE, 'Your access to this document was removed');
+            }
+        }, ACCESS_CHECK_INTERVAL_MS);
+    }
+
     // Track client IDs from awareness updates for proper cleanup
     // Client IDs come from the client's Y.Doc, not the server's
     ws.yjsClientIDs = new Set();
@@ -264,6 +287,10 @@ wss.on('connection', async (ws, request) => {
 
     // Handle connection close
     ws.on('close', async () => {
+        if (ws.accessCheckInterval) {
+            clearInterval(ws.accessCheckInterval);
+        }
+
         logger.info('WebSocket connection closed', {
             documentId,
             userId: userInfo.userId

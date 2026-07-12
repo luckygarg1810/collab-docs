@@ -263,4 +263,18 @@ public class DocumentController {
                     .body(new MessageResponse("Error: Failed to retrieve snapshot!"));
         }
     }
+
+    // Called by the yjs-service's per-connection 15-min hardcheck — a safety
+    // net for permission changes that don't go through a code path that
+    // publishes a document-events broadcast (e.g. a share link expiring).
+    // Takes yjsRoomId, not the numeric document id — that's all a live
+    // WebSocket connection in yjs-service actually knows.
+    @GetMapping("/access-check")
+    public ResponseEntity<?> checkAccess(@RequestParam String yjsRoomId,
+            @RequestParam Long userId,
+            HttpServletRequest request) {
+        requireInternalServiceKey(request);
+        boolean hasAccess = documentService.hasViewerAccess(yjsRoomId, userId);
+        return ResponseEntity.ok(java.util.Map.of("hasAccess", hasAccess));
+    }
 }
