@@ -33,4 +33,6 @@ public class DocumentResponse {
     private Boolean isStarred;
     /** When the requesting user last opened this document (null if never) */
     private LocalDateTime lastOpenedAt;
+    /** When this document was moved to the Recycle Bin (null unless deleted) */
+    private LocalDateTime deletedAt;
 }

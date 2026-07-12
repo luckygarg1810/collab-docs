@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,12 @@ import java.util.Optional;
 public interface DocumentRepository extends JpaRepository<Document, Long> {
     // Find non-deleted documents by owner
     List<Document> findByOwnerAndIsDeletedFalseOrderByUpdatedAtDesc(User owner);
+
+    // Recycle Bin listing — owner's soft-deleted documents, most recently deleted first
+    List<Document> findByOwnerAndIsDeletedTrueOrderByDeletedAtDesc(User owner);
+
+    // 15-day auto-purge sweep
+    List<Document> findByIsDeletedTrueAndDeletedAtBefore(LocalDateTime cutoff);
 
     // Find by Yjs room ID (non-deleted)
     Optional<Document> findByYjsRoomIdAndIsDeletedFalse(String yjsRoomId);

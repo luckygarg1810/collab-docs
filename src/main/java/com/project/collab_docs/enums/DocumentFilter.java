@@ -9,5 +9,9 @@ public enum DocumentFilter {
     OWNED,
     SHARED,
     STARRED,
-    RECENT
+    RECENT,
+    // Owner's own Recycle Bin — deleted documents. Deliberately not visible
+    // to other collaborators; a document a user no longer has access to
+    // just isn't shown, it doesn't show up in *their* trash.
+    TRASH
 }

@@ -187,6 +187,16 @@ public class DocumentController {
         return ResponseEntity.ok(new MessageResponse("Recorded"));
     }
 
+    @PostMapping("/{documentId}/restore")
+    public ResponseEntity<?> restoreDocument(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.restoreDocument(documentId, user);
+        log.info("Document {} restored by user: {}", documentId, user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document restored successfully"));
+    }
+
     @DeleteMapping("/{documentId}")
     public ResponseEntity<?> deleteDocument(
             @PathVariable Long documentId,

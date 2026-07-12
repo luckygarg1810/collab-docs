@@ -135,6 +135,10 @@ public class DocumentService {
                         .filter(doc -> !doc.getIsDeleted()
                                 && permissionService.hasPermission(doc.getId(), user.getId(), Role.VIEWER))
                         .toList();
+                // Not RBAC-based like the others — the owner's own deleted
+                // documents, full stop. A collaborator who lost access via
+                // deletion doesn't see it in their own trash; only the owner does.
+                case TRASH -> documentRepository.findByOwnerAndIsDeletedTrueOrderByDeletedAtDesc(user);
             };
 
             // Manual pagination since we're working with a List
@@ -295,6 +299,7 @@ public class DocumentService {
                 .userRole(effectiveRole)
                 .isStarred(isStarred)
                 .lastOpenedAt(lastOpenedAt)
+                .deletedAt(document.getDeletedAt())
                 .build();
     }
 
@@ -396,6 +401,34 @@ public class DocumentService {
         documentEventPublisher.publishDocumentDeleted(documentId, document.getYjsRoomId());
 
         log.info("Soft deleted document with ID: {} by user: {}", documentId, user.getEmail());
+    }
+
+    /**
+     * Restore a document from the Recycle Bin. Checked directly against
+     * document.getOwner() rather than PermissionService — the RBAC-lookup
+     * paths (getUserAccessibleDocuments etc.) all filter isDeleted=false,
+     * so they can't see this document to begin with while it's trashed.
+     * Collaborator permissions were never touched by the soft delete, so
+     * restoring needs nothing beyond flipping these two fields — every
+     * previous collaborator's access is already still there.
+     */
+    @Transactional
+    public void restoreDocument(Long documentId, User user) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+
+        if (!document.getOwner().getId().equals(user.getId())) {
+            throw new PermissionDeniedException("Only the document owner can restore this document");
+        }
+        if (!Boolean.TRUE.equals(document.getIsDeleted())) {
+            throw new IllegalArgumentException("Document is not in the Recycle Bin");
+        }
+
+        document.setIsDeleted(false);
+        document.setDeletedAt(null);
+        documentRepository.save(document);
+
+        log.info("Restored document with ID: {} by user: {}", documentId, user.getEmail());
     }
 
     private String generateUniqueYjsRoomId() {
