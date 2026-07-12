@@ -105,6 +105,9 @@ services:
       # Yjs collaboration service (for force-flush on version create)
       YJS_SERVICE_URL: http://yjs-service:3000
 
+      # Shared secret the yjs-service presents to call the yjs-snapshot endpoints
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+
       # Spring profiles
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
     ports:
@@ -134,6 +137,7 @@ services:
 
       # Backend API URL for PostgreSQL persistence
       BACKEND_URL: http://backend:8080
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
 
       # Redis (must connect to same Redis as backend)
       REDIS_HOST: redis

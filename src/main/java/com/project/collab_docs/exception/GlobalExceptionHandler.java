@@ -107,6 +107,21 @@ public class GlobalExceptionHandler {
                 return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
         }
 
+        @ExceptionHandler(InvalidServiceKeyException.class)
+        public ResponseEntity<ErrorResponse> handleInvalidServiceKeyException(
+                        InvalidServiceKeyException ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.UNAUTHORIZED.value(),
+                                "Invalid Service Key",
+                                ex.getMessage(),
+                                request.getDescription(false).replace("uri=", ""));
+
+                log.warn("Invalid internal service key on {}: {}", request.getDescription(false), ex.getMessage());
+                return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
+        }
+
         @ExceptionHandler(BadCredentialsException.class)
         public ResponseEntity<ErrorResponse> handleBadCredentialsException(
                         BadCredentialsException ex, WebRequest request) {

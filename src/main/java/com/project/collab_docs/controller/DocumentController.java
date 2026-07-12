@@ -8,11 +8,14 @@ import com.project.collab_docs.dto.request.UpdateVisibilityRequest;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import com.project.collab_docs.dto.response.MessageResponse;
 import com.project.collab_docs.enums.DocumentFilter;
+import com.project.collab_docs.exception.InvalidServiceKeyException;
 import com.project.collab_docs.security.CustomUserDetails;
 import com.project.collab_docs.service.DocumentService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +24,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -28,7 +33,24 @@ import java.io.IOException;
 @Slf4j
 public class DocumentController {
 
+    private static final String INTERNAL_SERVICE_KEY_HEADER = "X-Internal-Service-Key";
+
     private final DocumentService documentService;
+
+    @Value("${app.internal.service-key}")
+    private String internalServiceKey;
+
+    // Called by the yjs-service, which has no end-user JWT — verifies the
+    // shared internal secret instead. Constant-time comparison so response
+    // timing can't be used to brute-force the key one byte at a time.
+    private void requireInternalServiceKey(HttpServletRequest request) {
+        String provided = request.getHeader(INTERNAL_SERVICE_KEY_HEADER);
+        if (provided == null || !MessageDigest.isEqual(
+                provided.getBytes(StandardCharsets.UTF_8),
+                internalServiceKey.getBytes(StandardCharsets.UTF_8))) {
+            throw new InvalidServiceKeyException("Missing or invalid " + INTERNAL_SERVICE_KEY_HEADER + " header");
+        }
+    }
 
     @GetMapping
     public ResponseEntity<?> getDocument(@RequestParam(value = "document_id") Long documentId,
@@ -151,7 +173,9 @@ public class DocumentController {
     @PostMapping("/yjs-snapshot")
     public ResponseEntity<?> saveYjsSnapshot(
             @RequestParam("yjsRoomId") String yjsRoomId,
-            @RequestBody byte[] snapshot) {
+            @RequestBody byte[] snapshot,
+            HttpServletRequest request) {
+        requireInternalServiceKey(request);
         try {
             documentService.saveYjsSnapshot(yjsRoomId, snapshot);
             log.info("Saved Yjs snapshot for room: {} (size: {} bytes)", yjsRoomId, snapshot.length);
@@ -165,7 +189,8 @@ public class DocumentController {
     }
 
     @GetMapping("/yjs-snapshot/{yjsRoomId}")
-    public ResponseEntity<?> getYjsSnapshot(@PathVariable String yjsRoomId) {
+    public ResponseEntity<?> getYjsSnapshot(@PathVariable String yjsRoomId, HttpServletRequest request) {
+        requireInternalServiceKey(request);
         try {
             byte[] snapshot = documentService.getYjsSnapshot(yjsRoomId);
 

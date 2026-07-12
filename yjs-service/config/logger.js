@@ -2,7 +2,10 @@ const winston = require('winston');
 
 // Configure logging levels and format
 const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
+    // winston's level names are lowercase-only; an unrecognized level (e.g.
+    // an uppercase "INFO" from the environment) breaks its severity
+    // comparison and silently drops every log call, including errors.
+    level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
     format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.errors({ stack: true }),

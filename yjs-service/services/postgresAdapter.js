@@ -2,6 +2,7 @@ const axios = require('axios');
 const logger = require('../config/logger');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY;
 
 /**
  * Save Yjs snapshot to PostgreSQL database via Spring Boot backend
@@ -20,6 +21,7 @@ async function saveSnapshotToPostgres(yjsRoomId, snapshot) {
                 params: { yjsRoomId },
                 headers: {
                     'Content-Type': 'application/octet-stream',
+                    'X-Internal-Service-Key': INTERNAL_SERVICE_KEY,
                 },
                 timeout: 10000, // 10 second timeout
                 maxContentLength: 50 * 1024 * 1024, // 50MB max
@@ -72,6 +74,9 @@ async function loadSnapshotFromPostgres(yjsRoomId) {
         const response = await axios.get(
             `${BACKEND_URL}/api/documents/yjs-snapshot/${yjsRoomId}`,
             {
+                headers: {
+                    'X-Internal-Service-Key': INTERNAL_SERVICE_KEY,
+                },
                 responseType: 'arraybuffer',
                 timeout: 10000, // 10 second timeout
             }
