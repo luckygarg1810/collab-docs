@@ -71,6 +71,11 @@ public class Document {
     @Column(name = "is_deleted")
     private Boolean isDeleted = false;
 
+    // Set when soft-deleted (moved to Recycle Bin), cleared on restore. Drives
+    // the 15-day auto-purge window and the "deleted X ago" display.
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @PrePersist
     public void setCreationTimestamp() {
         LocalDateTime now = LocalDateTime.now();

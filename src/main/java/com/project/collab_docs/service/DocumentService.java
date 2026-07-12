@@ -45,6 +45,7 @@ public class DocumentService {
     private final DocumentPermissionRepository permissionRepository;
     private final StarredDocumentRepository starredDocumentRepository;
     private final RecentDocumentViewRepository recentDocumentViewRepository;
+    private final DocumentEventPublisher documentEventPublisher;
 
     @Transactional
     public Document createBlankDocument(String title, Long userId) {
@@ -389,7 +390,10 @@ public class DocumentService {
 
         // Perform soft delete
         document.setIsDeleted(true);
+        document.setDeletedAt(LocalDateTime.now());
         documentRepository.save(document);
+
+        documentEventPublisher.publishDocumentDeleted(documentId, document.getYjsRoomId());
 
         log.info("Soft deleted document with ID: {} by user: {}", documentId, user.getEmail());
     }
