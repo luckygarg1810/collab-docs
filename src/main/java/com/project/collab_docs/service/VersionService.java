@@ -179,7 +179,6 @@ public class VersionService {
                 .createdBy(user)
                 .createdAt(LocalDateTime.now())
                 .yjsSnapshot(yjsSnapshot)
-                .contentSnapshot(document.getContent()) // Store HTML/JSON content for previews
                 .sizeBytes((long) yjsSnapshot.length)
                 .snapshotHash(snapshotHash)
                 .build();
@@ -289,7 +288,6 @@ public class VersionService {
 
         // Update document with old version's content
         document.setYjsSnapshot(oldVersion.getYjsSnapshot());
-        document.setContent(oldVersion.getContentSnapshot());
         document.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(document);
 

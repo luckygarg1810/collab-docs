@@ -32,12 +32,6 @@ public class Document {
                                 // (application/vnd.openxmlformats-officedocument.wordprocessingml.document,
                                 // application/pdf, etc.)
 
-    @Deprecated
-    @Column(name = "content", columnDefinition = "TEXT")
-    private String content; // DEPRECATED: No longer used. TipTap editor relies solely on yjsSnapshot.
-                            // Kept for backward compatibility and potential future use cases.
-                            // All document content is stored in yjsSnapshot (Yjs CRDT binary format).
-
     @Column(name = "file_size")
     private Long fileSize; // Original upload file size in bytes (for tracking only)
 
