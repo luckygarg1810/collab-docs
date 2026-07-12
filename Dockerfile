@@ -22,12 +22,20 @@ COPY src ./src
 RUN ./mvnw clean package -DskipTests
 
 # Stage 2: Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+# Using debian-slim so apt-get is available (needed for pandoc install)
+FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
+# Install pandoc for high-quality DOCX→HTML conversion
+# pandoc is a native binary (~15 MB), no JVM overhead
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends pandoc && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN groupadd -r spring && useradd -r -g spring spring
 USER spring:spring
 
 # Copy the built JAR from build stage

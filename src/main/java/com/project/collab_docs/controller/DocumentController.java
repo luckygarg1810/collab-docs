@@ -112,9 +112,23 @@ public class DocumentController {
             CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
 
+            // Read bytes once — used for both document creation and content extraction
+            byte[] fileBytes = file.getBytes();
+            String fileName = file.getOriginalFilename();
+            String contentType = file.getContentType();
+
             Document document = documentService.uploadDocument(file, title, user);
+
+            // Extract HTML content (Pandoc for DOCX, pdf2dom for PDF)
+            // Runs synchronously — typically 300ms–2s depending on file size
+            String extractedHtml = documentService.extractHtmlFromFile(fileBytes, contentType, fileName);
+
             DocumentResponse response = documentService.mapToDocumentResponse(document);
-            log.info("Uploaded document '{}' for user: {}", document.getTitle(), user.getEmail());
+            response.setExtractedHtml(extractedHtml); // null if extraction failed (editor opens blank)
+
+            log.info("Uploaded and converted document '{}' for user: {} (html {} chars)",
+                    document.getTitle(), user.getEmail(),
+                    extractedHtml != null ? extractedHtml.length() : 0);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (IllegalArgumentException e) {

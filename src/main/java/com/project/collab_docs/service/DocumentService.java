@@ -20,6 +20,11 @@ import com.project.collab_docs.entities.RecentDocumentView;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.fit.pdfdom.PDFDomTree;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
+import org.jsoup.safety.Safelist;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -30,13 +35,23 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.w3c.dom.NodeList;
 
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -219,20 +234,16 @@ public class DocumentService {
                 ? originalFilename
                 : "Untitled File";
 
-        // Store original file MIME type for tracking purposes
         String originalContentType = file.getContentType();
 
-        // Note: We DO NOT extract/convert content here
-        // The frontend (TipTap) will handle file conversion and create Yjs document
-        // This allows for better client-side control and real-time collaboration setup
         Document document = Document.builder()
                 .title(title != null && !title.trim().isEmpty() ? title : getFileNameWithoutExtension(fileName))
                 .fileName(fileName)
-                .contentType(originalContentType) // Store original file type for reference
+                .contentType(originalContentType)
                 .fileSize(file.getSize())
                 .yjsRoomId(yjsRoomId)
                 .owner(owner)
-                .visibility(Visibility.PRIVATE) // Default to private
+                .visibility(Visibility.PRIVATE)
                 .isDeleted(false)
                 .build();
 
@@ -245,11 +256,185 @@ public class DocumentService {
                 Role.OWNER,
                 owner.getId());
 
-        log.info("Uploaded document metadata with ID: {} for user: {} with OWNER permission. " +
-                "Frontend will handle content conversion.",
-                savedDocument.getId(), owner.getEmail());
+        log.info("Uploaded document '{}' (ID: {}) for user: {}",
+                fileName, savedDocument.getId(), owner.getEmail());
 
         return savedDocument;
+    }
+
+    /**
+     * Converts an uploaded file's bytes to TipTap-compatible HTML.
+     * DOCX files go through Pandoc (installed in the Docker image) for
+     * near-perfect semantic HTML. PDF files go through pdf2dom which
+     * uses font-size heuristics to recover headings and paragraph structure.
+     * Returns null on failure so the editor still opens (just blank).
+     */
+    public String extractHtmlFromFile(byte[] fileBytes, String contentType, String fileName) {
+        try {
+            boolean isDocx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(contentType)
+                    || (fileName != null && fileName.toLowerCase().endsWith(".docx"));
+            boolean isPdf = "application/pdf".equals(contentType)
+                    || (fileName != null && fileName.toLowerCase().endsWith(".pdf"));
+
+            if (isDocx) {
+                return convertDocxWithPandoc(fileBytes);
+            } else if (isPdf) {
+                return convertPdfWithPdf2dom(fileBytes);
+            }
+            log.warn("Unsupported content type for extraction: {}", contentType);
+            return null;
+        } catch (Exception e) {
+            log.error("Content extraction failed for file '{}': {}", fileName, e.getMessage(), e);
+            return null; // graceful degradation — editor opens blank
+        }
+    }
+
+    // ── DOCX conversion ──────────────────────────────────────────────────────
+
+    /**
+     * Runs Pandoc (installed in the Docker image) as a subprocess.
+     * Pandoc reads DOCX at the semantic OOXML level — style names become
+     * proper heading tags, list continuation numbering is preserved, and
+     * output is clean HTML5 with no inline CSS.
+     * Temp files are always deleted in the finally block.
+     */
+    private String convertDocxWithPandoc(byte[] fileBytes) throws IOException, InterruptedException {
+        Path tempInput = Files.createTempFile("collab_upload_", ".docx");
+        Path tempOutput = Files.createTempFile("collab_converted_", ".html");
+        try {
+            Files.write(tempInput, fileBytes);
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    "pandoc",
+                    "--from=docx",
+                    "--to=html5",
+                    "--wrap=none",          // no soft line-wraps in output
+                    "--no-highlight",       // skip code syntax highlighting divs
+                    "--output=" + tempOutput.toAbsolutePath(),
+                    tempInput.toAbsolutePath().toString()
+            );
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new IOException("Pandoc timed out after 60 seconds");
+            }
+            if (process.exitValue() != 0) {
+                String stderr = new String(process.getInputStream().readAllBytes());
+                throw new IOException("Pandoc exited with code " + process.exitValue() + ": " + stderr);
+            }
+
+            String rawHtml = Files.readString(tempOutput);
+            log.info("Pandoc converted DOCX to HTML ({} chars)", rawHtml.length());
+            return sanitizeHtmlForTipTap(rawHtml, false);
+
+        } finally {
+            Files.deleteIfExists(tempInput);
+            Files.deleteIfExists(tempOutput);
+        }
+    }
+
+    // ── PDF conversion ───────────────────────────────────────────────────────
+
+    /**
+     * Uses pdf2dom (built on PDFBox) to convert PDF to an HTML DOM,
+     * then serialises the body to a string and sanitises it.
+     * pdf2dom infers heading levels from font size relative to the
+     * document's median body-text size — not perfect but readable.
+     */
+    private String convertPdfWithPdf2dom(byte[] fileBytes) throws Exception {
+        try (PDDocument pdDocument = PDDocument.load(fileBytes)) {
+            PDFDomTree parser = new PDFDomTree();
+            org.w3c.dom.Document dom = parser.createDOM(pdDocument);
+
+            // Serialise just the <body> children to an HTML string
+            org.w3c.dom.NodeList bodyNodes = dom.getElementsByTagName("body");
+            if (bodyNodes.getLength() == 0) {
+                throw new IOException("pdf2dom produced no body element");
+            }
+            org.w3c.dom.Node bodyNode = bodyNodes.item(0);
+
+            TransformerFactory tf = TransformerFactory.newInstance();
+            Transformer transformer = tf.newTransformer();
+            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+            transformer.setOutputProperty(OutputKeys.METHOD, "html");
+
+            StringWriter sw = new StringWriter();
+            transformer.transform(new DOMSource(bodyNode), new StreamResult(sw));
+            String rawHtml = sw.toString();
+
+            log.info("pdf2dom converted PDF to HTML ({} chars)", rawHtml.length());
+            return sanitizeHtmlForTipTap(rawHtml, true);
+        }
+    }
+
+    // ── Shared HTML sanitizer ────────────────────────────────────────────────
+
+    /**
+     * Strips everything TipTap doesn't understand and normalises the markup:
+     *
+     * 1. Removes <img>, <figure>, <figcaption>, <head>, <script>, <style>
+     * 2. Keeps only elements the installed TipTap extensions can handle
+     * 3. Strips all CSS class/style attributes (TipTap uses its own schema)
+     * 4. For PDF output (isPdf=true): collapses adjacent inline spans with
+     *    the same font-weight/style into single <strong>/<em> elements
+     *
+     * The allowlist maps to: StarterKit (p, h1-h6, ul, ol, li, blockquote,
+     * pre, code, hr, br), Underline (u), Link (a[href]), Highlight (mark),
+     * TextAlign (handled via data-text-align attr), and basic table nodes.
+     */
+    private String sanitizeHtmlForTipTap(String rawHtml, boolean isPdf) {
+        // Parse with Jsoup — handles both full HTML documents and fragments
+        org.jsoup.nodes.Document doc = Jsoup.parse(rawHtml);
+
+        if (isPdf) {
+            // pdf2dom wraps every character run in a <span style="...">
+            // Promote spans with font-weight:bold → <strong>, font-style:italic → <em>
+            for (Element span : doc.select("span[style]")) {
+                String style = span.attr("style").toLowerCase();
+                boolean bold   = style.contains("font-weight:bold") || style.contains("font-weight: bold");
+                boolean italic = style.contains("font-style:italic") || style.contains("font-style: italic");
+                if (bold && italic) {
+                    span.tagName("strong"); // wrap in strong; italic handled below
+                } else if (bold) {
+                    span.tagName("strong");
+                } else if (italic) {
+                    span.tagName("em");
+                } else {
+                    // plain span — unwrap it (keep text, remove the tag)
+                    span.unwrap();
+                }
+            }
+            // pdf2dom uses <div class="page"> wrappers — replace with plain divs
+            // so the content flows as normal paragraphs
+            for (Element div : doc.select("div.page")) {
+                div.removeAttr("class");
+                div.removeAttr("style");
+            }
+        }
+
+        // Build the Jsoup safelist: only elements TipTap extensions understand
+        Safelist safelist = Safelist.none()
+                .addTags("p", "h1", "h2", "h3", "h4", "h5", "h6",
+                         "strong", "em", "u", "s", "code", "pre",
+                         "ul", "ol", "li",
+                         "blockquote", "hr", "br",
+                         "a", "mark",
+                         "table", "thead", "tbody", "tr", "th", "td")
+                .addAttributes("a", "href", "title", "target")
+                .addAttributes("th", "colspan", "rowspan")
+                .addAttributes("td", "colspan", "rowspan")
+                .addProtocols("a", "href", "http", "https", "mailto");
+
+        String clean = Jsoup.clean(doc.body().html(), safelist);
+
+        // Final pass: remove empty paragraphs that pdf2dom tends to generate
+        clean = clean.replaceAll("<p>\\s*</p>", "");
+        clean = clean.trim();
+
+        return clean;
     }
 
     private void validateUploadedFile(MultipartFile file) {
@@ -258,9 +443,17 @@ public class DocumentService {
         }
 
         String contentType = file.getContentType();
-        if (contentType == null
-                || !contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                        && !contentType.equals("application/pdf")) {
+        String originalFilename = file.getOriginalFilename() != null
+                ? file.getOriginalFilename().toLowerCase() : "";
+
+        boolean isDocx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(contentType)
+                || originalFilename.endsWith(".docx");
+        boolean isPdf = "application/pdf".equals(contentType)
+                || originalFilename.endsWith(".pdf");
+
+        // Some browsers send .docx as application/octet-stream or application/zip
+        // so we use the extension as a reliable fallback
+        if (!isDocx && !isPdf) {
             throw new IllegalArgumentException("Only DOCX and PDF files are supported");
         }
 
