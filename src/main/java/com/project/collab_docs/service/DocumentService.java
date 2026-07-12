@@ -458,6 +458,30 @@ public class DocumentService {
     }
 
     /**
+     * Lets a non-owner collaborator remove themselves from a document —
+     * "leave this shared document." Straight permission-row delete, no
+     * Recycle Bin involved (that's an owner-only concept for the document
+     * itself, not per-collaborator access). Publishes PERMISSION_REVOKED so
+     * an active editing session for this exact user gets closed in real
+     * time if they're mid-session when they do this from another tab.
+     */
+    @Transactional
+    public void selfRevokeAccess(Long documentId, User user) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+
+        if (document.getOwner().getId().equals(user.getId())) {
+            throw new PermissionDeniedException(
+                    "Owners can't remove their own document this way — delete it instead");
+        }
+
+        permissionRepository.deleteByDocumentIdAndUserId(documentId, user.getId());
+        documentEventPublisher.publishPermissionRevoked(documentId, document.getYjsRoomId(), user.getId());
+
+        log.info("User {} removed their own access to document {}", user.getEmail(), documentId);
+    }
+
+    /**
      * Owner-triggered immediate permanent delete — skips the 15-day wait.
      * Requires the document to already be in the Recycle Bin (soft-deleted),
      * so this can't be used to bypass the normal delete-then-purge flow.

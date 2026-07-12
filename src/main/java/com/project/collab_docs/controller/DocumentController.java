@@ -197,6 +197,15 @@ public class DocumentController {
         return ResponseEntity.ok(new MessageResponse("Document restored successfully"));
     }
 
+    @DeleteMapping("/{documentId}/access")
+    public ResponseEntity<?> removeMyAccess(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.selfRevokeAccess(documentId, user);
+        return ResponseEntity.ok(new MessageResponse("Document removed from your list"));
+    }
+
     @DeleteMapping("/{documentId}/permanent")
     public ResponseEntity<?> permanentlyDeleteDocument(@PathVariable Long documentId, Authentication authentication) {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
