@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -72,8 +74,10 @@ public class DocumentVersion {
      * Binary Yjs CRDT snapshot at this point in time
      * This allows perfect restoration of the collaborative editing state
      */
-    @Lob
-    @Column(name = "yjs_snapshot", nullable = false)
+    // See Document.yjsSnapshot for why VARBINARY (bytea) instead of @Lob's
+    // default oid mapping — oid reads fail outside their fetch transaction.
+    @JdbcTypeCode(SqlTypes.VARBINARY)
+    @Column(name = "yjs_snapshot", nullable = false, columnDefinition = "bytea")
     private byte[] yjsSnapshot;
 
     /**

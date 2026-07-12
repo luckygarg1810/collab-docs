@@ -6,6 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -52,8 +54,14 @@ public class Document {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Lob
-    @Column(name = "yjs_snapshot")
+    // VARBINARY forces a plain Postgres bytea column instead of Hibernate's
+    // default oid (Large Object) mapping for @Lob byte[]. Large Objects are
+    // transaction-scoped — reading one back outside the transaction that
+    // fetched it throws "Large Objects may not be used in auto-commit mode."
+    // bytea is materialized with the row like any other column, no special
+    // transaction handling required.
+    @JdbcTypeCode(SqlTypes.VARBINARY)
+    @Column(name = "yjs_snapshot", columnDefinition = "bytea")
     private byte[] yjsSnapshot; // Optional binary snapshot of Yjs doc (Uint8Array)
 
     @Enumerated(EnumType.STRING)

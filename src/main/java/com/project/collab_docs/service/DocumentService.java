@@ -340,6 +340,7 @@ public class DocumentService {
         return roomId;
     }
 
+    @Transactional(readOnly = true)
     public byte[] getYjsSnapshot(String yjsRoomId) {
         try {
             // Validate input
