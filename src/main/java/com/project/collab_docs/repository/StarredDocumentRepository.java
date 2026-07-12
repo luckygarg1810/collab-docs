@@ -18,6 +18,13 @@ public interface StarredDocumentRepository extends JpaRepository<StarredDocument
     @Transactional
     void deleteByDocumentIdAndUserId(Long documentId, Long userId);
 
+    /**
+     * Delete every star for a document. Used by the Recycle Bin hard-delete
+     * cascade — must run before deleting the document row.
+     */
+    @Transactional
+    void deleteByDocumentId(Long documentId);
+
     @Query("SELECT s.document FROM StarredDocument s WHERE s.user.id = :userId " +
             "AND s.document.isDeleted = false")
     List<Document> findStarredDocumentsByUserId(@Param("userId") Long userId);

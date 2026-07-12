@@ -11,6 +11,7 @@ import com.project.collab_docs.exception.PermissionDeniedException;
 import com.project.collab_docs.exception.ResourceNotFoundException;
 import com.project.collab_docs.repository.DocumentRepository;
 import com.project.collab_docs.repository.DocumentPermissionRepository;
+import com.project.collab_docs.repository.DocumentVersionRepository;
 import com.project.collab_docs.repository.StarredDocumentRepository;
 import com.project.collab_docs.repository.RecentDocumentViewRepository;
 import com.project.collab_docs.repository.UserRepository;
@@ -19,9 +20,13 @@ import com.project.collab_docs.entities.RecentDocumentView;
 import com.project.collab_docs.dto.response.DocumentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,9 +48,13 @@ public class DocumentService {
     private final UserRepository userRepository;
     private final PermissionService permissionService;
     private final DocumentPermissionRepository permissionRepository;
+    private final DocumentVersionRepository versionRepository;
     private final StarredDocumentRepository starredDocumentRepository;
     private final RecentDocumentViewRepository recentDocumentViewRepository;
     private final DocumentEventPublisher documentEventPublisher;
+
+    @Value("${app.recycle-bin.retention-days:15}")
+    private int recycleBinRetentionDays;
 
     @Transactional
     public Document createBlankDocument(String title, Long userId) {
@@ -429,6 +438,69 @@ public class DocumentService {
         documentRepository.save(document);
 
         log.info("Restored document with ID: {} by user: {}", documentId, user.getEmail());
+    }
+
+    /**
+     * Owner-triggered immediate permanent delete — skips the 15-day wait.
+     * Requires the document to already be in the Recycle Bin (soft-deleted),
+     * so this can't be used to bypass the normal delete-then-purge flow.
+     */
+    @Transactional
+    public void permanentlyDeleteDocument(Long documentId, User user) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+
+        if (!document.getOwner().getId().equals(user.getId())) {
+            throw new PermissionDeniedException("Only the document owner can permanently delete this document");
+        }
+        if (!Boolean.TRUE.equals(document.getIsDeleted())) {
+            throw new IllegalArgumentException("Document must be in the Recycle Bin before it can be permanently deleted");
+        }
+
+        hardDeleteDocument(document);
+        log.info("Permanently deleted document with ID: {} by user: {}", documentId, user.getEmail());
+    }
+
+    /**
+     * Daily sweep of the Recycle Bin: anything soft-deleted more than
+     * recycleBinRetentionDays ago is hard-deleted. Also runs once at
+     * application startup — convenient for a local/single-instance setup
+     * where waiting for the cron window to test this is impractical. Not a
+     * pattern to keep once this ever runs as multiple replicas — every
+     * instance re-running a destructive sweep on every restart is fine only
+     * because it's idempotent (nothing left to purge the second time).
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void purgeExpiredTrash() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(recycleBinRetentionDays);
+        List<Document> expired = documentRepository.findByIsDeletedTrueAndDeletedAtBefore(cutoff);
+
+        if (expired.isEmpty()) {
+            log.info("Recycle Bin purge: nothing older than {} days to purge", recycleBinRetentionDays);
+            return;
+        }
+
+        for (Document document : expired) {
+            hardDeleteDocument(document);
+        }
+        log.info("Recycle Bin purge: permanently deleted {} document(s) older than {} days",
+                expired.size(), recycleBinRetentionDays);
+    }
+
+    /**
+     * Cascades through every table that references a document before
+     * deleting the document row itself — none of these foreign keys have
+     * ON DELETE CASCADE, so this has to be explicit and in this order.
+     */
+    private void hardDeleteDocument(Document document) {
+        Long documentId = document.getId();
+        versionRepository.deleteByDocumentId(documentId);
+        permissionRepository.deleteByDocumentId(documentId);
+        starredDocumentRepository.deleteByDocumentId(documentId);
+        recentDocumentViewRepository.deleteByDocumentId(documentId);
+        documentRepository.delete(document);
     }
 
     private String generateUniqueYjsRoomId() {

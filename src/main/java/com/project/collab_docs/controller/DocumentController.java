@@ -197,6 +197,16 @@ public class DocumentController {
         return ResponseEntity.ok(new MessageResponse("Document restored successfully"));
     }
 
+    @DeleteMapping("/{documentId}/permanent")
+    public ResponseEntity<?> permanentlyDeleteDocument(@PathVariable Long documentId, Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
+
+        documentService.permanentlyDeleteDocument(documentId, user);
+        log.info("Document {} permanently deleted by user: {}", documentId, user.getEmail());
+        return ResponseEntity.ok(new MessageResponse("Document permanently deleted"));
+    }
+
     @DeleteMapping("/{documentId}")
     public ResponseEntity<?> deleteDocument(
             @PathVariable Long documentId,

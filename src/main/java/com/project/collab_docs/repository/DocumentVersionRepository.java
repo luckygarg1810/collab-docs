@@ -110,5 +110,11 @@ public interface DocumentVersionRepository extends JpaRepository<DocumentVersion
      */
     @Query("SELECT CASE WHEN COUNT(v) > 0 THEN true ELSE false END FROM DocumentVersion v WHERE v.id = :versionId AND v.document.id = :documentId")
     boolean existsByIdAndDocumentId(@Param("versionId") Long versionId, @Param("documentId") Long documentId);
+
+    /**
+     * Delete every version for a document. Used by the Recycle Bin
+     * hard-delete cascade — must run before deleting the document row.
+     */
+    void deleteByDocumentId(Long documentId);
 }
 

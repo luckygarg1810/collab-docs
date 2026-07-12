@@ -63,6 +63,12 @@ public interface DocumentPermissionRepository extends JpaRepository<DocumentPerm
         void deleteByGrantedViaShareLinkId(Long shareLinkId);
 
         /**
+         * Delete every permission for a document. Used by the Recycle Bin
+         * hard-delete cascade — must run before deleting the document row.
+         */
+        void deleteByDocumentId(Long documentId);
+
+        /**
          * Check if user is the owner of a document
          */
         @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END " +

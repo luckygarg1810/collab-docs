@@ -32,4 +32,11 @@ public interface RecentDocumentViewRepository extends JpaRepository<RecentDocume
     List<RecentDocumentView> findTop10ByUserIdOrderByLastOpenedAtDesc(Long userId);
 
     Optional<RecentDocumentView> findByUserIdAndDocumentId(Long userId, Long documentId);
+
+    /**
+     * Delete every recent-view row for a document. Used by the Recycle Bin
+     * hard-delete cascade — must run before deleting the document row.
+     */
+    @Transactional
+    void deleteByDocumentId(Long documentId);
 }
