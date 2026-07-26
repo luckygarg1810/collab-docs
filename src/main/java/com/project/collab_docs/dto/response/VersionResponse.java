@@ -29,6 +29,7 @@ public class VersionResponse {
     private String snapshotHash;
     private String versionIdentifier; // e.g., "v1", "v2"
     private String displayName; // e.g., "Final draft (v2)" or "Version 2"
+    private boolean restoration; // true if auto-created as a restore's audit record, not manually saved
 
     /**
      * Create a response from entity
@@ -48,6 +49,7 @@ public class VersionResponse {
                 .snapshotHash(version.getSnapshotHash())
                 .versionIdentifier(version.getVersionIdentifier())
                 .displayName(version.getDisplayName())
+                .restoration(version.isRestoration())
                 .build();
     }
 }

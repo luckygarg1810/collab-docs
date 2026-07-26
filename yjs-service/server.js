@@ -12,6 +12,7 @@ const {
     getDocument,
     getAwareness,
     applyUpdate,
+    restoreDocument,
     getStateVector,
     getStateAsUpdate,
     saveDocument,
@@ -116,6 +117,31 @@ app.post('/api/documents/:documentId/save', async (req, res) => {
     } catch (error) {
         logger.error('Force-save failed', { error: error.message });
         res.status(500).json({ error: 'Failed to save document' });
+    }
+});
+
+// Restore endpoint — called by Spring when a user restores a previous
+// version. Replaces the live in-memory document's content (see
+// restoreDocument() for why a plain applyUpdate() merge can't do this),
+// persists the result, and broadcasts the change to any connected clients
+// so an active editing session reflects the restore immediately instead of
+// silently keeping its stale pre-restore state.
+app.post('/api/documents/:documentId/restore', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+    const { documentId } = req.params;
+    try {
+        const snapshot = req.body;
+        if (!snapshot || snapshot.length === 0) {
+            return res.status(400).json({ error: 'Missing snapshot body' });
+        }
+
+        const diffUpdate = await restoreDocument(documentId, snapshot);
+        broadcastUpdate(documentId, diffUpdate, null);
+
+        logger.info('Document restored via HTTP', { documentId });
+        res.json({ success: true, message: 'Document restored successfully' });
+    } catch (error) {
+        logger.error('Restore failed', { documentId, error: error.message });
+        res.status(500).json({ error: 'Failed to restore document' });
     }
 });
 

@@ -107,6 +107,15 @@ public class DocumentVersion {
     @Column(name = "change_notes", columnDefinition = "TEXT")
     private String changeNotes;
 
+    /**
+     * True if this version was auto-created as an audit-trail record of a
+     * restore (see VersionService.restoreVersion), false if a user explicitly
+     * saved it. Lets the UI visually distinguish the two in version history.
+     */
+    @Builder.Default
+    @Column(name = "is_restoration", nullable = false)
+    private boolean restoration = false;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {

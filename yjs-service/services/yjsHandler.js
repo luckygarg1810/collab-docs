@@ -262,6 +262,57 @@ async function saveToDisk(documentId) {
 }
 
 /**
+ * Restore a document's content to an older Yjs snapshot.
+ *
+ * Y.applyUpdate() can't be used for this: CRDT merges are additive only —
+ * applying an old snapshot's update bytes onto a doc that has already moved
+ * past that state is a no-op, since every operation in the old snapshot is
+ * already causally contained in the newer state. Instead this clears the
+ * live root XmlFragment (the field TipTap's Collaboration extension binds
+ * to, see @tiptap/extension-collaboration's default `field: 'default'`) and
+ * re-inserts cloned content from a scratch doc built off the old snapshot,
+ * inside a single transaction. That produces brand-new operations that
+ * causally supersede the current state for every peer — the same mechanism
+ * a real edit uses — so it merges and broadcasts correctly instead of
+ * being silently swallowed.
+ *
+ * @param {string} documentId - Document identifier (yjsRoomId)
+ * @param {Buffer|Uint8Array} snapshot - old version's Yjs snapshot bytes
+ * @returns {Promise<Uint8Array>} diff update to broadcast to connected clients
+ */
+async function restoreDocument(documentId, snapshot) {
+    const ydoc = await getDocument(documentId);
+    const beforeStateVector = Y.encodeStateVector(ydoc);
+
+    const scratchDoc = new Y.Doc();
+    Y.applyUpdate(scratchDoc, snapshot);
+
+    ydoc.transact(() => {
+        const liveFragment = ydoc.getXmlFragment('default');
+        const snapshotFragment = scratchDoc.getXmlFragment('default');
+        liveFragment.delete(0, liveFragment.length);
+        liveFragment.insert(0, snapshotFragment.toArray().map((item) => item.clone()));
+    }, 'restore');
+
+    scratchDoc.destroy();
+
+    const diffUpdate = Y.encodeStateAsUpdate(ydoc, beforeStateVector);
+
+    // Persist the merged result immediately, same as a manual save — don't
+    // wait for the next debounce/autosave cycle to make it durable.
+    const state = Y.encodeStateAsUpdate(ydoc);
+    await Promise.allSettled([
+        saveDocumentState(documentId, state),
+        saveSnapshotToPostgres(documentId, state),
+    ]);
+
+    lastActivityTimestamps.set(documentId, Date.now());
+    logger.info('Document restored', { documentId, diffSize: diffUpdate.length });
+
+    return diffUpdate;
+}
+
+/**
  * Get the current state vector of a document
  * @param {string} documentId - Document identifier
  * @returns {Promise<Uint8Array>} State vector
@@ -505,6 +556,7 @@ module.exports = {
     getDocument,
     getAwareness,
     applyUpdate,
+    restoreDocument,
     getStateVector,
     getStateAsUpdate,
     saveDocument,

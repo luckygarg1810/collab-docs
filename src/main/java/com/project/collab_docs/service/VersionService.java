@@ -20,6 +20,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -27,6 +30,7 @@ import jakarta.persistence.PersistenceContext;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -83,6 +87,12 @@ public class VersionService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    // The backend container's clock is pinned to IST (see docker-compose.yml's
+    // TZ: Asia/Kolkata under the backend service), so LocalDateTime.now() —
+    // and everything derived from it, like DocumentVersion.createdAt — is
+    // already IST wall-clock time despite carrying no timezone marker.
+    private static final DateTimeFormatter RESTORATION_NOTE_DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy, h:mm a 'IST'");
+
     /**
      * Ask the Yjs service to immediately flush the in-memory Y.Doc to PostgreSQL.
      * This is called before creating a version when the document has no saved snapshot yet
@@ -104,6 +114,41 @@ public class VersionService {
     }
 
     /**
+     * Ask the Yjs service to replace a room's live document content with an
+     * older version's snapshot, and persist the merged result.
+     *
+     * Writing oldVersion.getYjsSnapshot() straight into Document.yjsSnapshot
+     * here would look like it worked (200 OK, row updated) but be invisible:
+     * yjs-service's getDocument() checks its in-memory doc cache and then
+     * Redis before ever looking at Postgres, so a live/cached room would
+     * just keep serving its old content and overwrite this write on its next
+     * autosave. And even if we did push the raw bytes into yjs-service, a
+     * plain Y.applyUpdate() merge can't roll back a doc that has already
+     * moved past that state — CRDT merges only add operations, they can't
+     * undo ones a peer already has. yjs-service's /restore endpoint handles
+     * both problems: it replaces the live doc's content with new operations
+     * (so the merge actually takes effect) and broadcasts the change to any
+     * connected clients.
+     *
+     * @throws IllegalStateException if the Yjs service call fails — restore
+     *         must not be reported as successful (and no restoration version
+     *         should be recorded) if the document wasn't actually restored.
+     */
+    private void restoreYjsDocument(String yjsRoomId, byte[] snapshot) {
+        try {
+            String url = yjsServiceUrl + "/api/documents/" + yjsRoomId + "/restore";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            HttpEntity<byte[]> entity = new HttpEntity<>(snapshot, headers);
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            log.info("Yjs restore triggered for room {}: HTTP {}", yjsRoomId, response.getStatusCode());
+        } catch (Exception e) {
+            log.error("Failed to restore Yjs document for room {}: {}", yjsRoomId, e.getMessage());
+            throw new IllegalStateException("Failed to restore document content. Please try again.", e);
+        }
+    }
+
+    /**
      * Create a new version snapshot of a document.
      * Captures current Yjs state and content.
      *
@@ -118,6 +163,15 @@ public class VersionService {
      */
     @Transactional
     public VersionResponse createVersion(Long documentId, String versionName, String changeNotes, Long userId) {
+        return createVersion(documentId, versionName, changeNotes, userId, false);
+    }
+
+    /**
+     * @param isRestoration true when this version is the auto-created audit
+     *        record of a restore (see restoreVersion()), false for a
+     *        user-initiated save — lets the UI tell the two apart.
+     */
+    private VersionResponse createVersion(Long documentId, String versionName, String changeNotes, Long userId, boolean isRestoration) {
         log.info("Creating version for document {} by user {}", documentId, userId);
 
         // Validate user has EDITOR permission (can create versions)
@@ -141,18 +195,17 @@ public class VersionService {
                     maxVersionsPerDocument));
         }
 
-        // Get current Yjs snapshot from document
-        byte[] yjsSnapshot = document.getYjsSnapshot();
-        if (yjsSnapshot == null || yjsSnapshot.length == 0) {
-            // Try to flush the Yjs service immediately so the snapshot reaches PostgreSQL
-            log.info("No PostgreSQL snapshot found for document {}, triggering Yjs force-flush", documentId);
-            flushYjsSnapshot(document.getYjsRoomId());
+        // Always force-flush the live Yjs doc to PostgreSQL before snapshotting.
+        // yjs-service only persists on a 30s-after-last-edit debounce (or a 5min
+        // interval fallback) — without an unconditional flush here, "Save Version"
+        // would silently capture whatever was last autosaved rather than what's
+        // actually on screen when the user clicks Save.
+        flushYjsSnapshot(document.getYjsRoomId());
 
-            // IMPORTANT: Evict the stale L1-cached entity so the next findById
-            // issues a real SELECT and picks up the freshly written yjsSnapshot.
-            entityManager.refresh(document);
-            yjsSnapshot = document.getYjsSnapshot();
-        }
+        // IMPORTANT: Evict the stale L1-cached entity so the next findById
+        // issues a real SELECT and picks up the freshly written yjsSnapshot.
+        entityManager.refresh(document);
+        byte[] yjsSnapshot = document.getYjsSnapshot();
 
         if (yjsSnapshot == null || yjsSnapshot.length == 0) {
             // Also try asking the YjsCollaborationService (reads from DB/Redis directly)
@@ -181,6 +234,7 @@ public class VersionService {
                 .yjsSnapshot(yjsSnapshot)
                 .sizeBytes((long) yjsSnapshot.length)
                 .snapshotHash(snapshotHash)
+                .restoration(isRestoration)
                 .build();
 
         version = versionRepository.save(version);
@@ -285,27 +339,33 @@ public class VersionService {
             throw new PermissionDeniedException("You must have EDITOR permission to restore versions");
         }
 
+        // Replace the room's live content via the Yjs service (see
+        // restoreYjsDocument() javadoc for why a direct Postgres write can't
+        // actually restore a CRDT document).
+        restoreYjsDocument(document.getYjsRoomId(), oldVersion.getYjsSnapshot());
 
-        // Update document with old version's content
-        document.setYjsSnapshot(oldVersion.getYjsSnapshot());
+        // The Yjs service just updated documents.yjs_snapshot out-of-band (its
+        // own HTTP call into Spring, outside this persistence context).
+        // Evict the stale L1-cached copy so the createVersion() call below
+        // snapshots the actual restored content, not what was cached here
+        // before the restore ran.
+        entityManager.refresh(document);
         document.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(document);
 
-        // Save to Yjs service as well
-        yjsCollaborationService.saveYjsSnapshot(document.getYjsRoomId(), oldVersion.getYjsSnapshot());
-
         // Create a new version marking this restoration
+        String creatorName = (oldVersion.getCreatedBy().getFirstName() + " " + oldVersion.getCreatedBy().getLastName()).trim();
         String restorationName = "Restored from " + oldVersion.getDisplayName();
         String restorationNotes = String.format("Restored from version %d created by %s on %s",
                 oldVersion.getVersionNumber(),
-                oldVersion.getCreatedBy().getEmail(),
-                oldVersion.getCreatedAt());
+                creatorName.isEmpty() ? oldVersion.getCreatedBy().getEmail() : creatorName,
+                oldVersion.getCreatedAt().format(RESTORATION_NOTE_DATE_FORMAT));
 
         log.info("Document {} restored to version {} by user {}",
                 document.getId(), oldVersion.getVersionNumber(), userId);
 
         // Create new version to record this restoration
-        return createVersion(document.getId(), restorationName, restorationNotes, userId);
+        return createVersion(document.getId(), restorationName, restorationNotes, userId, true);
     }
 
     /**
